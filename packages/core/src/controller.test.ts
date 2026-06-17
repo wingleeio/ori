@@ -175,4 +175,41 @@ describe("EditorController", () => {
     ed.setViewport(top.totalHeight - 300, 300);
     expect(ed.getSnapshot().visible.some((b) => b.index === 199)).toBe(true);
   });
+
+  it("getSelectionInline clips a styled selection into marked runs", () => {
+    const { ed, firstId } = make(["plain text"]);
+    ed.setSelection({ anchor: { blockId: firstId, offset: 0 }, focus: { blockId: firstId, offset: 5 } });
+    ed.toggleMark("bold");
+    // select "ain te" (offsets 2..8), spanning the bold/plain boundary at 5
+    ed.setSelection({ anchor: { blockId: firstId, offset: 2 }, focus: { blockId: firstId, offset: 8 } });
+    const blocks = ed.getSelectionInline();
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].map((r) => r.text).join("")).toBe("ain te");
+    expect(blocks[0][0].marks?.bold).toBe(true); // "ain"
+    expect(blocks[0][blocks[0].length - 1].marks?.bold).toBeFalsy(); // " te"
+  });
+
+  it("insertInline restores marks (copy → paste round-trip)", () => {
+    const { ed, firstId } = make(["bold normal"]);
+    ed.setSelection({ anchor: { blockId: firstId, offset: 0 }, focus: { blockId: firstId, offset: 4 } });
+    ed.toggleMark("bold");
+    ed.selectAll();
+    const copied = ed.getSelectionInline();
+    const len = ed.getBlockText(firstId).length;
+    ed.setSelection(at(firstId, len));
+    ed.insertInline(copied[0]);
+    const items = ed.getInline(firstId);
+    expect(ed.getBlockText(firstId)).toBe("bold normalbold normal");
+    const pastedBold = items.find((r) => r.start === 11); // the re-pasted "bold"
+    expect(pastedBold?.marks?.bold).toBe(true);
+  });
+
+  it("insertInline across blocks preserves block boundaries", () => {
+    const { ed, firstId } = make(["start"]);
+    ed.setSelection(at(firstId, 5));
+    ed.insertInline([{ text: "a", start: 0 }]);
+    ed.insertParagraphBreak();
+    ed.insertInline([{ text: "b", start: 0 }]);
+    expect(ed.blockIds().map((id) => ed.getBlockText(id))).toEqual(["starta", "b"]);
+  });
 });

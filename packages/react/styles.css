@@ -131,15 +131,13 @@
   color: var(--ori-link, #2563eb);
 }
 
-.ori-selection-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.ori-selection-rect {
+/* Native selection highlight, branded via --ori-selection (the browser draws
+ * the selection now that the editor is contentEditable). */
+.ori-ce ::selection {
   background: var(--ori-selection, rgba(56, 132, 255, 0.22));
-  border-radius: 2px;
+}
+.ori-ce ::-moz-selection {
+  background: var(--ori-selection, rgba(56, 132, 255, 0.22));
 }
 
 .ori-caret {

@@ -60,6 +60,20 @@ import {
 } from "./selection";
 import { Virtualizer } from "./virtualizer";
 
+/** Clip a block's inline items to the half-open offset range [from, to), re-based to 0. */
+function clipInline(items: InlineItem[], from: number, to: number): InlineItem[] {
+  const out: InlineItem[] = [];
+  for (const it of items) {
+    const itLen = it.atom ? 1 : it.text.length;
+    const s = Math.max(from, it.start);
+    const e = Math.min(to, it.start + itLen);
+    if (s >= e) continue;
+    if (it.atom) out.push({ ...it, start: s - from });
+    else out.push({ text: it.text.slice(s - it.start, e - it.start), start: s - from, marks: it.marks });
+  }
+  return out;
+}
+
 export interface EditorOptions {
   /** Existing note document. A fresh one-paragraph doc is created if omitted. */
   doc?: Y.Doc;
@@ -630,6 +644,30 @@ export class EditorController {
     return block ? textToInline(blockText(block), this.atomResolver()) : [];
   }
 
+  /**
+   * The current selection's content as inline runs, one array per spanned block
+   * (clipped to the selection's start/end offsets). Used to put styled content
+   * on the clipboard so marks survive copy/paste. Empty if nothing is selected.
+   */
+  getSelectionInline(): InlineItem[][] {
+    const sel = this.selection;
+    if (!sel || isCollapsed(sel)) return [];
+    const { start, end } = orderedRange(sel, this.indexOf);
+    const order = this.virtualizer.getOrder();
+    const si = this.indexOf(start.blockId);
+    const ei = this.indexOf(end.blockId);
+    const out: InlineItem[][] = [];
+    for (let i = si; i <= ei; i += 1) {
+      const id = order[i];
+      const items = this.getInline(id);
+      const len = blockText(this.byId(id)!).length;
+      const from = i === si ? start.offset : 0;
+      const to = i === ei ? end.offset : len;
+      out.push(clipInline(items, from, to));
+    }
+    return out;
+  }
+
   /** A block's `attrs` as a plain object (for custom block renderers). */
   getBlockAttrs(id: string): Record<string, unknown> {
     const block = this.byId(id);
@@ -810,6 +848,25 @@ export class EditorController {
     const startPos = this.collapsedStart();
     const after = insertInlineEmbed(this.doc, this.blocks, startPos, embed);
     this.setSelection(caret(after));
+  }
+
+  /**
+   * Insert a sequence of styled runs / atoms at the caret, advancing as it goes.
+   * The counterpart to {@link getSelectionInline} — used to restore marked
+   * content on paste. Each run keeps its own marks (independent of pending marks).
+   */
+  insertInline(items: InlineItem[]): void {
+    for (const item of items) {
+      const startPos = this.collapsedStart();
+      if (item.atom) {
+        const embed = (item.atom.data as Record<string, unknown>) ?? { type: item.atom.type };
+        this.setSelection(caret(insertInlineEmbed(this.doc, this.blocks, startPos, embed)));
+      } else if (item.text) {
+        const after = insertText(this.doc, this.blocks, startPos, item.text, fullAttributes(item.marks ?? {}));
+        this.setSelection(caret(after));
+      }
+    }
+    this.pendingMarks = null;
   }
 
   deleteBackward(): void {
