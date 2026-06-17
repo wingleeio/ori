@@ -287,12 +287,24 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
       end();
     };
 
+    // Keep focus in the hidden input. On iOS a touch tap is followed (~300ms) by
+    // a synthesized mousedown on the tapped span; its default action moves focus
+    // off the input and dismisses the keyboard (the "focus then blur" flicker).
+    // Suppressing the mousedown default also stops native text selection on
+    // desktop, where we manage selection ourselves.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.clientX - scroller.getBoundingClientRect().left >= scroller.clientWidth) return; // scrollbar
+      e.preventDefault();
+    };
+
     scroller.addEventListener("pointerdown", onDown, { passive: false });
+    scroller.addEventListener("mousedown", onMouseDown);
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", end);
     return () => {
       scroller.removeEventListener("pointerdown", onDown);
+      scroller.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", end);
@@ -371,8 +383,16 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
         focus: { blockId: m.blockId, offset: focusOff },
       });
     };
+    // iOS dispatches `selectionchange` on the <textarea> itself; other engines
+    // dispatch it on `document`. Listen on both so the spacebar-trackpad and
+    // native caret moves are caught everywhere.
+    const el = inputRef.current;
     document.addEventListener("selectionchange", onSelChange);
-    return () => document.removeEventListener("selectionchange", onSelChange);
+    el?.addEventListener("selectionchange", onSelChange);
+    return () => {
+      document.removeEventListener("selectionchange", onSelChange);
+      el?.removeEventListener("selectionchange", onSelChange);
+    };
   }, [coarse, editor]);
 
   // Apply the difference between the mirrored block text and the input's new
@@ -449,6 +469,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     overflow: "hidden",
     whiteSpace: "pre",
     zIndex: 1,
+    // 16px keeps iOS from zooming on focus and treats it as a real input the
+    // spacebar-trackpad will engage.
+    fontSize: "16px",
   };
 
   return (
