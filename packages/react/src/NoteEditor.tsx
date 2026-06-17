@@ -47,6 +47,13 @@ export interface NoteEditorHandle {
   getSelectionRect(): ViewportRect | null;
   /** The scrolling element, for scroll-aware positioning. */
   getScrollElement(): HTMLElement | null;
+  /**
+   * The content overlay element (a positioned layer that scrolls *with* the
+   * text). Render floating UI into this with `position: absolute` and
+   * content-relative coordinates so it rides the scroll natively instead of
+   * trailing it (which causes a fixed-position toolbar to shake on scroll).
+   */
+  getOverlayElement(): HTMLElement | null;
 }
 
 function caretClientRect(): DOMRect | null {
@@ -84,6 +91,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
 ) {
   const snapshot = useEditorSnapshot(editor);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
@@ -109,6 +117,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
         return { top: b.top, left: b.left, right: b.right, bottom: b.bottom, width: b.width, height: b.height };
       },
       getScrollElement: () => scrollerRef.current,
+      getOverlayElement: () => overlayRef.current,
     }),
     [],
   );
@@ -187,7 +196,15 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   // the caret at the document end (the usual "click to keep writing" affordance).
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (readOnly) return;
-    if ((e.target as HTMLElement).closest("[data-block-id]")) return; // real block → browser
+    // Only act on the editor's own empty surface — not on blocks (the browser
+    // places the caret) and not on floating UI (menus) layered into the overlay.
+    const t = e.target as HTMLElement;
+    const onSurface =
+      t === scrollerRef.current ||
+      t === overlayRef.current ||
+      t.classList.contains("ori-ce") ||
+      t.dataset.spacer != null;
+    if (!onSurface) return;
     const content = contentRef.current;
     const blocks = content?.querySelectorAll("[data-block-id]");
     const last = blocks && (blocks[blocks.length - 1] as HTMLElement | undefined);
@@ -209,7 +226,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   return (
     <div className={`ori-root${className ? ` ${className}` : ""}`} style={style}>
       <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll} onPointerDown={onPointerDown}>
-        <div className="ori-content" style={{ maxWidth, marginInline: "auto", position: "relative" }}>
+        <div className="ori-content" ref={overlayRef} style={{ maxWidth, marginInline: "auto", position: "relative" }}>
           <div
             className="ori-canvas ori-ce"
             ref={contentRef}
