@@ -225,28 +225,6 @@
   color: var(--ori-placeholder, rgba(120, 120, 120, 0.5));
 }
 
-/* Block-type accents — none of these shift text position. */
-.ori-block-quote {
-  color: var(--ori-quote-text, rgba(90, 90, 90, 0.95));
-}
-
-.ori-block-quote::before {
-  content: "";
-  position: absolute;
-  left: -16px;
-  top: 1px;
-  bottom: 1px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--ori-quote-border, rgba(120, 120, 120, 0.5));
-}
-
-.ori-block-code {
-  background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
-  border-radius: 8px;
-  box-shadow: 0 0 0 10px var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
-}
-
 .ori-input {
   font: inherit;
 }

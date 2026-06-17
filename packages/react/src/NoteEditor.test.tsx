@@ -101,6 +101,15 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect(screen.getByText("line 0")).toBeDefined();
   });
 
+  it("keeps an empty block selectable (renders a <br>)", () => {
+    const editor = makeEditor(["has text", ""]);
+    const { container } = render(<NoteEditor editor={editor} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    const empty = ce.querySelectorAll("[data-block-id]")[1] as HTMLElement;
+    expect(empty.textContent).toBe("");
+    expect(empty.querySelector("br")).not.toBeNull();
+  });
+
   it("shows the placeholder for an empty document", () => {
     const editor = makeEditor([""]);
     render(<NoteEditor editor={editor} placeholder="Write here" />);

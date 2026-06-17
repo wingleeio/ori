@@ -213,6 +213,26 @@ const BLOCKS: { type: BlockType; label: string }[] = [
 
 export function SelectionMenu({ editor, editorRef }: { editor: EditorController; editorRef: Ref }) {
   const snap = useEditorSnapshot(editor);
+  // The menu is pinned to the selection's viewport rect, so it must re-measure
+  // on any scroll (the page, not just the editor) or resize.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const f = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setTick((n) => n + 1);
+      });
+    };
+    window.addEventListener("scroll", f, true);
+    window.addEventListener("resize", f);
+    return () => {
+      window.removeEventListener("scroll", f, true);
+      window.removeEventListener("resize", f);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
   void snap.revision;
   const sel = snap.selection;
   if (!sel || isCollapsed(sel)) return null;

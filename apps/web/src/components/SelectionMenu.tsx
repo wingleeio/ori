@@ -1,7 +1,7 @@
 import { isCollapsed, type BlockType, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { ChevronDown } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +25,25 @@ const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
  */
 export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
   const snapshot = useEditorSnapshot(editor);
+  // Re-measure the pinned position on any scroll/resize (not just model changes).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const f = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setTick((n) => n + 1);
+      });
+    };
+    window.addEventListener("scroll", f, true);
+    window.addEventListener("resize", f);
+    return () => {
+      window.removeEventListener("scroll", f, true);
+      window.removeEventListener("resize", f);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
   const sel = snapshot.selection;
   if (!sel || isCollapsed(sel)) return null;
 
