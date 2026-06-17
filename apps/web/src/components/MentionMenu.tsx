@@ -1,6 +1,8 @@
 import { isCollapsed, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { useEffect, useMemo, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { caretMenu } from "@/lib/caretMenu";
 import { avatarColor, filterPeople, initials, type Person } from "@/lib/people";
 import { cn } from "@/lib/utils";
 
@@ -98,20 +100,11 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
   }, [open, people, index, key]);
 
   if (!open) return null;
-  const caret = editorRef.current?.getCaretRect();
-  if (!caret) return null;
+  const m = caretMenu(editorRef, MENU_WIDTH, MAX_HEIGHT);
+  if (!m) return null;
 
-  const below = caret.y + caret.height + 6;
-  const placeAbove = below + MAX_HEIGHT > window.innerHeight && caret.y > MAX_HEIGHT;
-  const top = placeAbove ? caret.y - 6 : below;
-  const left = Math.max(12, Math.min(caret.x, window.innerWidth - MENU_WIDTH - 12));
-
-  return (
-    <div
-      className="fixed z-40"
-      style={{ top, left, width: MENU_WIDTH, transform: placeAbove ? "translateY(-100%)" : undefined }}
-      onMouseDown={(e) => e.preventDefault()}
-    >
+  return createPortal(
+    <div className="z-40" style={m.style} onMouseDown={(e) => e.preventDefault()}>
       <div className="animate-fade-in overflow-hidden rounded-xl bg-popover p-1 shadow-xl ring-1 ring-border/60">
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
           People
@@ -145,6 +138,7 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    m.overlay,
   );
 }

@@ -17,6 +17,7 @@ import {
   useMemo,
   useState,
   type ComponentType,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
@@ -57,16 +58,27 @@ const initials = (n: string) => n.split(/\s+/).map((p) => p[0]).join("").slice(0
 const MENU = "animate-fade-in overflow-hidden rounded-xl border border-fd-border bg-fd-popover p-1 shadow-xl";
 const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm";
 
-function caretMenuStyle(editorRef: Ref, open: boolean) {
+/**
+ * Position a caret-anchored menu (slash / mention) inside the editor's content
+ * overlay with content-relative coordinates, so it rides the scroll natively
+ * instead of trailing it (same approach as the selection toolbar). Returns the
+ * portal target + style, or null when closed/unavailable.
+ */
+function caretMenu(editorRef: Ref, open: boolean, width: number): { style: CSSProperties; overlay: HTMLElement } | null {
   if (!open) return null;
   const c = editorRef.current?.getCaretRect();
-  if (!c) return null;
-  const below = c.y + c.height + 6;
-  const placeAbove = below + 300 > window.innerHeight && c.y > 300;
+  const overlay = editorRef.current?.getOverlayElement();
+  if (!c || !overlay) return null;
+  const box = overlay.getBoundingClientRect();
+  const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+  const vpBottom = sc ? sc.bottom : window.innerHeight;
+  const vpTop = sc ? sc.top : 0;
+  const placeAbove = c.y + c.height + 280 > vpBottom && c.y - vpTop > 280;
+  const topVp = placeAbove ? c.y - 6 : c.y + c.height + 6;
+  const left = Math.max(0, Math.min(c.x - box.left, box.width - width - 8));
   return {
-    top: placeAbove ? c.y - 6 : below,
-    left: Math.max(12, Math.min(c.x, window.innerWidth - 280)),
-    transform: placeAbove ? "translateY(-100%)" : undefined,
+    style: { top: topVp - box.top, left, transform: placeAbove ? "translateY(-100%)" : undefined },
+    overlay,
   };
 }
 
@@ -114,10 +126,10 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, commands, index, key]);
 
-  const pos = caretMenuStyle(editorRef, open);
-  if (!pos) return null;
-  return (
-    <div className="fixed z-40 w-[264px]" style={pos} onMouseDown={keepFocus}>
+  const m = caretMenu(editorRef, open, 264);
+  if (!m) return null;
+  return createPortal(
+    <div className="absolute z-40 w-[264px]" style={m.style} onMouseDown={keepFocus}>
       <div className={MENU}>
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fd-muted-foreground/70">Blocks & formatting</div>
         {commands.map((c, i) => (
@@ -130,7 +142,8 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
           </button>
         ))}
       </div>
-    </div>
+    </div>,
+    m.overlay,
   );
 }
 
@@ -183,10 +196,10 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, people, index, key]);
 
-  const pos = caretMenuStyle(editorRef, open);
-  if (!pos) return null;
-  return (
-    <div className="fixed z-40 w-[260px]" style={pos} onMouseDown={keepFocus}>
+  const m = caretMenu(editorRef, open, 260);
+  if (!m) return null;
+  return createPortal(
+    <div className="absolute z-40 w-[260px]" style={m.style} onMouseDown={keepFocus}>
       <div className={MENU}>
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fd-muted-foreground/70">People</div>
         {people.map((p, i) => (
@@ -196,7 +209,8 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
           </button>
         ))}
       </div>
-    </div>
+    </div>,
+    m.overlay,
   );
 }
 
