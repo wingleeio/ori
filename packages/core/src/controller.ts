@@ -153,7 +153,8 @@ export class EditorController {
   private revision = 0;
   private cachedSnapshot: EditorSnapshot | null = null;
   private deepHandler: (events: Array<Y.YEvent<any>>) => void;
-  private undoManager: Y.UndoManager;
+  private undoManager!: Y.UndoManager;
+  private connected = false;
 
   constructor(options: EditorOptions) {
     this.doc = options.doc ?? createNoteDoc();
@@ -171,8 +172,7 @@ export class EditorController {
     if (firstId) this.selection = caret(position(firstId, 0));
 
     this.deepHandler = (events) => this.onDeepChange(events);
-    this.blocks.observeDeep(this.deepHandler);
-    this.undoManager = new Y.UndoManager(this.blocks, { captureTimeout: 250 });
+    this.connect();
   }
 
   // ---------------------------------------------------------------------------
@@ -218,18 +218,40 @@ export class EditorController {
     this.emitter.emit();
   }
 
-  destroy(): void {
+  /**
+   * (Re)subscribe to the document and (re)build the undo stack. Idempotent, and
+   * safe to call again after {@link disconnect}. This is what lets the controller
+   * survive React StrictMode's dev mount → unmount → remount cycle: the hosting
+   * hook disconnects on the simulated unmount and reconnects on the remount,
+   * reusing the same controller (and all its state) instead of a dead one.
+   */
+  connect(): void {
+    if (this.connected) return;
+    this.connected = true;
+    this.blocks.observeDeep(this.deepHandler);
+    this.undoManager = new Y.UndoManager(this.blocks, { captureTimeout: 250 });
+  }
+
+  /** Tear down document subscriptions but keep the controller reusable. */
+  disconnect(): void {
+    if (!this.connected) return;
+    this.connected = false;
     this.blocks.unobserveDeep(this.deepHandler);
     this.undoManager.destroy();
+  }
+
+  /** Terminal teardown: disconnect, then drop UI subscribers. */
+  destroy(): void {
+    this.disconnect();
     this.emitter.clear();
   }
 
   undo(): void {
-    this.undoManager.undo();
+    if (this.connected) this.undoManager.undo();
   }
 
   redo(): void {
-    this.undoManager.redo();
+    if (this.connected) this.undoManager.redo();
   }
 
   // ---------------------------------------------------------------------------

@@ -6,8 +6,10 @@ import {
   getBlocks,
 } from "@wingleeio/ori-core";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { NoteEditor } from "./NoteEditor";
+import { useEditor } from "./useEditor";
 
 afterEach(cleanup);
 
@@ -74,5 +76,28 @@ describe("<NoteEditor>", () => {
     const editor = makeEditor([""]);
     render(<NoteEditor editor={editor} placeholder="Write here" />);
     expect(screen.getByText("Write here")).toBeDefined();
+  });
+
+  it("stays reactive under StrictMode (subscriptions survive the dev double-mount)", () => {
+    const doc = createNoteDoc([{ text: "abc" }]);
+    let editor!: EditorController;
+    function Harness() {
+      editor = useEditor({ doc, measurer: createMonospaceMeasurer() });
+      return <NoteEditor editor={editor} />;
+    }
+    // StrictMode mounts → unmounts → remounts effects in dev. If the controller's
+    // observeDeep/undo subscriptions are torn down on the simulated unmount and
+    // never reconnected, the edit below never re-measures and the text is stale.
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+    const id = blockId(getBlocks(doc).get(0));
+    act(() => {
+      editor.setSelection(at(id, 3));
+      editor.insertText("d");
+    });
+    expect(screen.getByText("abcd")).toBeDefined();
   });
 });

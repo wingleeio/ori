@@ -7,9 +7,7 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
-  // The live demo's EditorController owns long-lived Yjs subscriptions; StrictMode's
-  // dev-only mount/unmount/remount would tear them down. (Prod is unaffected.)
-  reactStrictMode: false,
+  reactStrictMode: true,
   transpilePackages: ["@wingleeio/ori-react", "@wingleeio/ori-core", "@wingleeio/ori-pretext"],
   webpack: (cfg) => {
     // Dedupe yjs to one instance so `instanceof Y.Text/Y.Map` checks inside
