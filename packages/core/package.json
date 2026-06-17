@@ -1,6 +1,6 @@
 {
   "name": "@wingleeio/ori-core",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Framework-agnostic local-first note-editor runtime: Y.Doc block model, virtualization, a custom-node schema and the Pretext-backed EditorController.",
   "type": "module",
   "license": "MIT",
