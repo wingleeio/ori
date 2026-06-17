@@ -11,3 +11,4 @@ coverage
 .cache
 .env
 .env.local
+.vercel
