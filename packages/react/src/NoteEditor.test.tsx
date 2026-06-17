@@ -23,14 +23,40 @@ const at = (id: string, offset: number) => ({
   focus: { blockId: id, offset },
 });
 
-describe("<NoteEditor>", () => {
-  it("renders block text as materialized lines", () => {
-    const editor = makeEditor(["hello world"]);
-    render(<NoteEditor editor={editor} />);
+describe("<NoteEditor> (contentEditable)", () => {
+  it("renders block text into a single editable surface", () => {
+    const editor = makeEditor(["hello world", "second"]);
+    const { container } = render(<NoteEditor editor={editor} />);
     expect(screen.getByText("hello world")).toBeDefined();
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    expect(ce.getAttribute("contenteditable")).toBe("true");
+    expect(ce.querySelectorAll("[data-block-id]").length).toBe(2);
   });
 
-  it("renders custom block and inline-atom nodes via their renderers", () => {
+  it("re-renders when the model changes", () => {
+    const editor = makeEditor(["abc"]);
+    render(<NoteEditor editor={editor} />);
+    const id = blockId(getBlocks(editor.doc).get(0));
+    act(() => {
+      editor.setSelection(at(id, 3));
+      editor.insertText("d");
+    });
+    expect(screen.getByText("abcd")).toBeDefined();
+  });
+
+  it("renders marks as styled spans", () => {
+    const doc = createNoteDoc([{ text: "x" }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const id = blockId(getBlocks(doc).get(0));
+    act(() => {
+      editor.setSelection({ anchor: { blockId: id, offset: 0 }, focus: { blockId: id, offset: 1 } });
+      editor.toggleMark("bold");
+    });
+    const { container } = render(<NoteEditor editor={editor} />);
+    expect(container.querySelector(".ori-m-bold")?.textContent).toBe("x");
+  });
+
+  it("renders custom block and inline-atom nodes via their renderers", async () => {
     const doc = createNoteDoc([{ text: "x" }]);
     const editor = new EditorController({
       doc,
@@ -51,25 +77,12 @@ describe("<NoteEditor>", () => {
         editor={editor}
         blockRenderers={{ divider: () => <hr data-testid="divider" /> }}
         atomRenderers={{
-          mention: ({ atom }) => (
-            <span data-testid="chip">@{(atom.data as { label: string }).label}</span>
-          ),
+          mention: ({ atom }) => <span data-testid="chip">@{(atom.data as { label: string }).label}</span>,
         }}
       />,
     );
-    expect(screen.getByTestId("divider")).toBeDefined();
-    expect(screen.getByTestId("chip").textContent).toBe("@Ada");
-  });
-
-  it("re-renders when the editor state changes", () => {
-    const editor = makeEditor(["abc"]);
-    render(<NoteEditor editor={editor} />);
-    const id = blockId(getBlocks(editor.doc).get(0));
-    act(() => {
-      editor.setSelection(at(id, 3));
-      editor.insertText("d");
-    });
-    expect(screen.getByText("abcd")).toBeDefined();
+    expect(await screen.findByTestId("divider")).toBeDefined();
+    expect((await screen.findByTestId("chip")).textContent).toBe("@Ada");
   });
 
   it("shows the placeholder for an empty document", () => {
@@ -78,64 +91,13 @@ describe("<NoteEditor>", () => {
     expect(screen.getByText("Write here")).toBeDefined();
   });
 
-  it("on touch devices, mirrors the block into the hidden input and diffs native edits", () => {
-    const orig = window.matchMedia;
-    window.matchMedia = ((q: string) => ({
-      matches: q.includes("coarse"),
-      media: q,
-      onchange: null,
-      addEventListener() {},
-      removeEventListener() {},
-      addListener() {},
-      removeListener() {},
-      dispatchEvent() {
-        return false;
-      },
-    })) as typeof window.matchMedia;
-    try {
-      const doc = createNoteDoc([{ text: "hello" }]);
-      let editor!: EditorController;
-      function Harness() {
-        editor = useEditor({ doc, measurer: createMonospaceMeasurer() });
-        return <NoteEditor editor={editor} />;
-      }
-      render(<Harness />);
-      const id = blockId(getBlocks(doc).get(0));
-      const input = document.querySelector(".ori-input") as HTMLTextAreaElement;
-      // focus + place a caret → the input mirrors the focused block's text
-      act(() => {
-        input.focus();
-        editor.setSelection(at(id, 5));
-      });
-      expect(input.value).toBe("hello");
-      // a native insertion (autocorrect / trackpad keyboard) reconciles by diff
-      act(() => {
-        input.value = "helloX";
-        input.setSelectionRange(6, 6);
-        input.dispatchEvent(new InputEvent("input", { bubbles: true, data: "X", inputType: "insertText" }));
-      });
-      expect(editor.getBlockText(id)).toBe("helloX");
-      // native caret move (the iOS spacebar-trackpad fires selectionchange)
-      act(() => {
-        input.setSelectionRange(0, 0);
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      expect(editor.getSelection()).toMatchObject({ focus: { blockId: id, offset: 0 } });
-    } finally {
-      window.matchMedia = orig;
-    }
-  });
-
-  it("stays reactive under StrictMode (subscriptions survive the dev double-mount)", () => {
+  it("survives React StrictMode (view + controller re-created cleanly)", () => {
     const doc = createNoteDoc([{ text: "abc" }]);
-    let editor!: EditorController;
+    let editor!: ReturnType<typeof useEditor>;
     function Harness() {
       editor = useEditor({ doc, measurer: createMonospaceMeasurer() });
       return <NoteEditor editor={editor} />;
     }
-    // StrictMode mounts → unmounts → remounts effects in dev. If the controller's
-    // observeDeep/undo subscriptions are torn down on the simulated unmount and
-    // never reconnected, the edit below never re-measures and the text is stale.
     render(
       <StrictMode>
         <Harness />

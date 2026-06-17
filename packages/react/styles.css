@@ -49,6 +49,60 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── contentEditable surface ─────────────────────────────────────────────── */
+.ori-ce {
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default; /* allow native iOS selection menus */
+  caret-color: transparent; /* the browser caret is hidden; we draw our own */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ori-ce .ori-block {
+  white-space: pre-wrap;
+  min-height: 1.6em;
+}
+.ori-ce .ori-frag {
+  white-space: inherit; /* wrap with the block, not `pre` */
+}
+
+/* inline marks (browser-laid-out runs) */
+.ori-m-bold {
+  font-weight: 700;
+}
+.ori-m-italic {
+  font-style: italic;
+}
+.ori-m-underline {
+  text-decoration: underline;
+}
+.ori-m-strike {
+  text-decoration: line-through;
+}
+.ori-m-underline.ori-m-strike {
+  text-decoration: underline line-through;
+}
+
+/* block typography (CSS-driven now the browser handles layout) */
+.ori-ce .ori-block-heading {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.ori-ce .ori-block-quote {
+  border-inline-start: 3px solid var(--ori-quote-border, currentColor);
+  padding-inline-start: 0.75em;
+  color: var(--ori-quote-text, inherit);
+}
+.ori-ce .ori-block-code {
+  font-family: var(--ori-mono, ui-monospace, SFMono-Regular, monospace);
+  background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
+  border-radius: 6px;
+  padding: 0.4em 0.6em;
+}
+
 .ori-line {
   position: relative;
 }

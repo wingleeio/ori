@@ -58,6 +58,7 @@ export type {
   Line,
   Fragment,
   InlineAtom,
+  InlineItem,
 } from "@wingleeio/ori-pretext";
 export {
   DEFAULT_TYPOGRAPHY,

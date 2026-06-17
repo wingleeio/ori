@@ -11,6 +11,7 @@ import {
   typographyKey,
   visualLineBounds,
   type BlockLayout,
+  type InlineItem,
   type Marks,
   type Measurer,
   type Typography,
@@ -610,6 +611,23 @@ export class EditorController {
   getBlockText(id: string): string {
     const block = this.byId(id);
     return block ? textToPlain(blockText(block)) : "";
+  }
+
+  /** All block ids in document order. */
+  blockIds(): string[] {
+    return [...this.virtualizer.getOrder()];
+  }
+
+  /** A block's type (paragraph/heading/… or a custom type). */
+  getBlockType(id: string): BlockType {
+    const block = this.byId(id);
+    return block ? blockType(block) : "paragraph";
+  }
+
+  /** A block's pre-wrap inline runs + atoms (for contentEditable rendering). */
+  getInline(id: string): InlineItem[] {
+    const block = this.byId(id);
+    return block ? textToInline(blockText(block), this.atomResolver()) : [];
   }
 
   /** A block's `attrs` as a plain object (for custom block renderers). */
