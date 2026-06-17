@@ -1,12 +1,21 @@
 {
   "name": "@wingleeio/ori-pretext",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Agnostic text layout & measurement engine: line-breaking, caret geometry, hit-testing and selection rects with no DOM, React or Yjs dependency.",
   "type": "module",
   "license": "MIT",
   "author": "Wing <imisterlee@gmail.com>",
-  "keywords": ["text-layout", "line-breaking", "text-measurement", "typesetting", "editor", "caret"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "text-layout",
+    "line-breaking",
+    "text-measurement",
+    "typesetting",
+    "editor",
+    "caret"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "exports": {
     ".": {
@@ -18,7 +27,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

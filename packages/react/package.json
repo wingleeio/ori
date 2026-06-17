@@ -1,13 +1,24 @@
 {
   "name": "@wingleeio/ori-react",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "React bindings for the Ori virtualized, local-first note editor.",
   "type": "module",
   "license": "MIT",
   "author": "Wing <imisterlee@gmail.com>",
-  "keywords": ["editor", "react", "yjs", "local-first", "virtualized-editor", "rich-text"],
-  "publishConfig": { "access": "public" },
-  "sideEffects": ["**/*.css"],
+  "keywords": [
+    "editor",
+    "react",
+    "yjs",
+    "local-first",
+    "virtualized-editor",
+    "rich-text"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,7 +30,10 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "styles.css"],
+  "files": [
+    "dist",
+    "styles.css"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
