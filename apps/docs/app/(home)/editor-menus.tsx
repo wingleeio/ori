@@ -2,6 +2,7 @@
 
 import { isCollapsed, type BlockType, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
+import { createPortal } from "react-dom";
 import {
   Bold,
   Code,
@@ -213,37 +214,28 @@ const BLOCKS: { type: BlockType; label: string }[] = [
 
 export function SelectionMenu({ editor, editorRef }: { editor: EditorController; editorRef: Ref }) {
   const snap = useEditorSnapshot(editor);
-  // The menu is pinned to the selection's viewport rect, so it must re-measure
-  // on any scroll (the page, not just the editor) or resize.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const f = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        setTick((n) => n + 1);
-      });
-    };
-    window.addEventListener("scroll", f, true);
-    window.addEventListener("resize", f);
-    return () => {
-      window.removeEventListener("scroll", f, true);
-      window.removeEventListener("resize", f);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
   void snap.revision;
   const sel = snap.selection;
   if (!sel || isCollapsed(sel)) return null;
   const rect = editorRef.current?.getSelectionRect();
-  if (!rect) return null;
+  const overlay = editorRef.current?.getOverlayElement();
+  if (!rect || !overlay) return null;
 
   const marks = editor.getActiveMarks();
   const blockType = (editor.blockTypeAtSelection() ?? "paragraph") as BlockType;
-  const below = rect.top < 84;
-  return (
-    <div className="fixed z-40" style={{ top: below ? rect.bottom + 10 : rect.top - 10, left: rect.left + rect.width / 2, transform: below ? "translate(-50%, 0)" : "translate(-50%, -100%)" }}>
+  // Position inside the scrolling content layer (content-relative coords) so the
+  // toolbar rides the scroll natively instead of trailing it. Flip below when the
+  // selection is too close to the scroller's top edge to fit the toolbar above.
+  const box = overlay.getBoundingClientRect();
+  const scTop = editorRef.current?.getScrollElement()?.getBoundingClientRect().top ?? box.top;
+  const below = rect.top - scTop < 44;
+  const style = {
+    top: (below ? rect.bottom + 8 : rect.top - 8) - box.top,
+    left: rect.left + rect.width / 2 - box.left,
+    transform: below ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+  };
+  return createPortal(
+    <div className="absolute z-40" style={style}>
       <div className="animate-fade-in flex items-center gap-0.5 rounded-xl border border-fd-border bg-fd-popover p-1 shadow-lg">
         {BLOCKS.map((b) => (
           <button key={b.type} type="button" onMouseDown={keepFocus} onClick={() => { editor.setBlockTypeAtSelection(b.type); editorRef.current?.focus(); }} className={`rounded-md px-2 py-1 text-xs font-medium ${blockType === b.type ? "bg-fd-primary/15 text-fd-primary" : "text-fd-muted-foreground hover:bg-fd-accent"}`}>
@@ -257,6 +249,7 @@ export function SelectionMenu({ editor, editorRef }: { editor: EditorController;
           </button>
         ))}
       </div>
-    </div>
+    </div>,
+    overlay,
   );
 }

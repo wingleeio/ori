@@ -1,7 +1,8 @@
 import { isCollapsed, type BlockType, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { ChevronDown } from "lucide-react";
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,43 +26,29 @@ const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
  */
 export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
   const snapshot = useEditorSnapshot(editor);
-  // Re-measure the pinned position on any scroll/resize (not just model changes).
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const f = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        setTick((n) => n + 1);
-      });
-    };
-    window.addEventListener("scroll", f, true);
-    window.addEventListener("resize", f);
-    return () => {
-      window.removeEventListener("scroll", f, true);
-      window.removeEventListener("resize", f);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
   const sel = snapshot.selection;
   if (!sel || isCollapsed(sel)) return null;
 
   const rect = editorRef.current?.getSelectionRect();
-  if (!rect) return null;
+  const overlay = editorRef.current?.getOverlayElement();
+  if (!rect || !overlay) return null;
 
   const marks = editor.getActiveMarks();
   const blockType = (editor.blockTypeAtSelection() ?? "paragraph") as BlockType;
   const current = BLOCK_OPTIONS.find((b) => b.type === blockType) ?? BLOCK_OPTIONS[0];
 
-  const margin = 10;
-  const placeBelow = rect.top < 84;
-  const top = placeBelow ? rect.bottom + margin : rect.top - margin;
-  const left = rect.left + rect.width / 2;
+  // Position inside the scrolling content layer (content-relative coords) so the
+  // toolbar rides the scroll natively rather than trailing it. Flip below when
+  // the selection is too close to the scroller's top to fit the toolbar above.
+  const box = overlay.getBoundingClientRect();
+  const scTop = editorRef.current?.getScrollElement()?.getBoundingClientRect().top ?? box.top;
+  const placeBelow = rect.top - scTop < 44;
+  const top = (placeBelow ? rect.bottom + 8 : rect.top - 8) - box.top;
+  const left = rect.left + rect.width / 2 - box.left;
 
-  return (
+  return createPortal(
     <div
-      className="fixed z-40"
+      className="absolute z-40"
       style={{ top, left, transform: placeBelow ? "translate(-50%, 0)" : "translate(-50%, -100%)" }}
     >
       {/* Animation lives on an inner element so it can't clobber the
@@ -112,6 +99,7 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
           );
         })}
       </div>
-    </div>
+    </div>,
+    overlay,
   );
 }
