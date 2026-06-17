@@ -178,8 +178,16 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     if (scroller) editor.setViewport(scroller.scrollTop, scroller.clientHeight);
   };
 
+  // Bound to the whole scroller (not just the text canvas) so clicking any
+  // empty space — padding, the gutter below the last block — still focuses the
+  // editor and drops the caret at the nearest position (positionFromPoint clamps).
   const onMouseDown = (e: ReactMouseEvent) => {
     if (e.button !== 0) return;
+    const scroller = scrollerRef.current;
+    // Ignore the native scrollbar gutter so scrollbar drags keep working.
+    if (scroller && e.clientX - scroller.getBoundingClientRect().left >= scroller.clientWidth) {
+      return;
+    }
     inputRef.current?.focus();
     const pos = pointToPosition(e.clientX, e.clientY);
     if (!pos) return;
@@ -248,7 +256,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   return (
     <RenderersProvider value={renderers}>
       <div className={`ori-root${className ? ` ${className}` : ""}`} style={style}>
-      <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll}>
+      <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll} onMouseDown={onMouseDown}>
         <div
           className="ori-content"
           ref={contentRef}
@@ -257,7 +265,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
           <div
             className="ori-canvas"
             style={{ position: "relative", width: "100%", height: snapshot.totalHeight }}
-            onMouseDown={onMouseDown}
           >
             <SelectionLayer editor={editor} snapshot={snapshot} />
             {snapshot.visible.map((block) => (
