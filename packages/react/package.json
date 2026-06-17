@@ -1,0 +1,56 @@
+{
+  "name": "@wingleeio/ori-react",
+  "version": "0.0.0",
+  "description": "React bindings for the Ori virtualized, local-first note editor.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Wing <imisterlee@gmail.com>",
+  "keywords": ["editor", "react", "yjs", "local-first", "virtualized-editor", "rich-text"],
+  "publishConfig": { "access": "public" },
+  "sideEffects": ["**/*.css"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "styles.css"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@wingleeio/ori-core": "workspace:*",
+    "@wingleeio/ori-pretext": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19",
+    "yjs": "^13.6.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^3.0.5",
+    "jsdom": "^25.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5",
+    "yjs": "^13.6.21"
+  }
+}

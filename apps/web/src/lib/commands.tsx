@@ -1,0 +1,77 @@
+import type { BlockType, EditorController } from "@wingleeio/ori-core";
+import {
+  Bold,
+  Code,
+  Code2,
+  Heading1,
+  Image,
+  Italic,
+  type LucideIcon,
+  Minus,
+  Pilcrow,
+  Quote,
+  Strikethrough,
+  Underline,
+} from "lucide-react";
+import { sampleImageAttrs } from "@/lib/nodes";
+
+export type MarkKey = "bold" | "italic" | "underline" | "strike" | "code";
+type Icon = LucideIcon;
+
+export interface BlockOption {
+  type: BlockType;
+  label: string;
+  icon: Icon;
+}
+
+export const BLOCK_OPTIONS: BlockOption[] = [
+  { type: "paragraph", label: "Text", icon: Pilcrow },
+  { type: "heading", label: "Heading", icon: Heading1 },
+  { type: "quote", label: "Quote", icon: Quote },
+  { type: "code", label: "Code block", icon: Code2 },
+];
+
+export interface MarkOption {
+  key: MarkKey;
+  label: string;
+  icon: Icon;
+  shortcut?: string;
+}
+
+export const MARK_OPTIONS: MarkOption[] = [
+  { key: "bold", label: "Bold", icon: Bold, shortcut: "⌘B" },
+  { key: "italic", label: "Italic", icon: Italic, shortcut: "⌘I" },
+  { key: "underline", label: "Underline", icon: Underline, shortcut: "⌘U" },
+  { key: "strike", label: "Strikethrough", icon: Strikethrough },
+  { key: "code", label: "Code", icon: Code, shortcut: "⌘E" },
+];
+
+export interface SlashCommand {
+  id: string;
+  label: string;
+  hint?: string;
+  icon: Icon;
+  keywords: string[];
+  run: (editor: EditorController) => void;
+}
+
+export const SLASH_COMMANDS: SlashCommand[] = [
+  { id: "text", label: "Text", hint: "Plain paragraph", icon: Pilcrow, keywords: ["text", "paragraph", "body", "p"], run: (e) => e.setBlockTypeAtSelection("paragraph") },
+  { id: "heading", label: "Heading", hint: "Section title", icon: Heading1, keywords: ["heading", "title", "h1", "header"], run: (e) => e.setBlockTypeAtSelection("heading") },
+  { id: "quote", label: "Quote", hint: "Callout or citation", icon: Quote, keywords: ["quote", "blockquote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
+  { id: "code", label: "Code block", hint: "Monospace block", icon: Code2, keywords: ["code", "snippet", "pre", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
+  { id: "bold", label: "Bold", hint: "Toggle bold", icon: Bold, keywords: ["bold", "strong", "b"], run: (e) => e.toggleMark("bold") },
+  { id: "italic", label: "Italic", hint: "Toggle italic", icon: Italic, keywords: ["italic", "emphasis", "i"], run: (e) => e.toggleMark("italic") },
+  { id: "inline-code", label: "Inline code", hint: "Toggle code mark", icon: Code, keywords: ["code", "inline", "mono"], run: (e) => e.toggleMark("code") },
+  // Custom, measurable nodes registered via the schema (mentions use "@"):
+  { id: "divider", label: "Divider", hint: "Horizontal rule (custom node)", icon: Minus, keywords: ["divider", "rule", "hr", "line", "separator"], run: (e) => e.insertBlockAfterSelection("divider") },
+  { id: "image", label: "Image", hint: "Sample image (custom node)", icon: Image, keywords: ["image", "img", "photo", "picture"], run: (e) => e.insertBlockAfterSelection("image", sampleImageAttrs()) },
+];
+
+export function filterSlashCommands(query: string): SlashCommand[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return SLASH_COMMANDS;
+  return SLASH_COMMANDS.filter(
+    (c) => c.label.toLowerCase().includes(q) || c.keywords.some((k) => k.includes(q)),
+  );
+}

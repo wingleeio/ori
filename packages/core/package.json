@@ -1,0 +1,45 @@
+{
+  "name": "@wingleeio/ori-core",
+  "version": "0.0.0",
+  "description": "Framework-agnostic local-first note-editor runtime: Y.Doc block model, virtualization, a custom-node schema and the Pretext-backed EditorController.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Wing <imisterlee@gmail.com>",
+  "keywords": ["editor", "yjs", "crdt", "local-first", "virtualization", "rich-text", "block-editor"],
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@wingleeio/ori-pretext": "workspace:*"
+  },
+  "peerDependencies": {
+    "yjs": "^13.6.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^3.0.5",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5",
+    "yjs": "^13.6.21"
+  }
+}

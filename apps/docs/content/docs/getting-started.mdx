@@ -1,0 +1,68 @@
+---
+title: Getting started
+description: Install Ori and render a virtualized editor in React.
+---
+
+## Install
+
+```bash
+pnpm add @wingleeio/ori-react @wingleeio/ori-core yjs
+```
+
+`@wingleeio/ori-react` pulls in `@wingleeio/ori-core` (which pulls in `@wingleeio/ori-pretext`). `yjs` and
+`react` are peer dependencies you provide.
+
+## Render an editor
+
+```tsx
+import { useEditor, NoteEditor, createNoteDoc } from "@wingleeio/ori-react";
+import "@wingleeio/ori-react/styles.css";
+
+export function Editor() {
+  // One Y.Doc per note. Persist/sync it however you like.
+  const editor = useEditor({ doc: createNoteDoc() });
+
+  return (
+    <NoteEditor
+      editor={editor}
+      autoFocus
+      maxWidth={720}
+      placeholder="Write, or press / for commands…"
+    />
+  );
+}
+```
+
+That's a fully virtualized editor: only the blocks intersecting the viewport are
+mounted, the caret and selection are drawn from logical positions, and keyboard,
+mouse and IME input are handled for you.
+
+## Persist & restore
+
+The document is a `Y.Doc`; persistence is just binary updates.
+
+```ts
+import { encodeDoc, docFromUpdate } from "@wingleeio/ori-core";
+
+const bytes = encodeDoc(editor.doc); // save (e.g. to IndexedDB / localStorage)
+const doc = docFromUpdate(bytes); // restore later
+```
+
+To switch notes, give the hosting component a `key` (e.g. the note id) so it
+remounts with a fresh controller for the new `Y.Doc`.
+
+## Toolbars from geometry
+
+`<NoteEditor>` forwards a handle exposing the caret/selection rectangles in
+viewport coordinates, so you can build a slash menu or a floating selection
+toolbar:
+
+```tsx
+import { useRef } from "react";
+import { NoteEditor, type NoteEditorHandle } from "@wingleeio/ori-react";
+
+const ref = useRef<NoteEditorHandle>(null);
+// ref.current?.getCaretRect()      -> { x, y, height }
+// ref.current?.getSelectionRect()  -> bounding box in client coords
+<NoteEditor ref={ref} editor={editor} />;
+```

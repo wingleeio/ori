@@ -1,0 +1,76 @@
+---
+title: Custom nodes
+description: Register measurable block types and inline atoms with a measure function and a renderer.
+---
+
+Ori is driven by a **schema** of measurable nodes, so you add custom block types
+and inline atoms without forking the engine. A node only declares *how it
+measures* and *how it renders*; layout, virtualization, caret and selection come
+for free.
+
+## 1. Register nodes (core)
+
+Text nodes are laid out by Pretext. **Atomic** blocks return their own height;
+**inline atoms** return their own width.
+
+```tsx
+const editor = useEditor({
+  schema: {
+    blocks: {
+      divider: { type: "divider", text: false, measure: () => 33 },
+      image: {
+        type: "image",
+        text: false,
+        // height is a pure function of width + attrs — re-measured on resize
+        measure: ({ width, attrs }) => Math.round(width / Number(attrs.ratio)),
+      },
+    },
+    atoms: {
+      mention: {
+        type: "mention",
+        measure: ({ data, typography, measurer }) =>
+          measurer.measure(`@${data.label}`, resolveFont(typography, {})) + 14,
+      },
+    },
+  },
+});
+```
+
+## 2. Render them (react)
+
+Renderers are keyed by type. Atomic blocks get a block renderer; inline atoms
+get an atom renderer drawn at the measured width so the caret stays aligned.
+
+```tsx
+<NoteEditor
+  editor={editor}
+  blockRenderers={{
+    divider: () => <hr />,
+    image: ({ editor, block }) => (
+      <img src={String(editor.getBlockAttrs(block.id).src)} alt="" />
+    ),
+  }}
+  atomRenderers={{
+    mention: ({ atom }) => <Chip label={(atom.data as { label: string }).label} />,
+  }}
+/>
+```
+
+## How it works
+
+- **Atomic blocks** (divider, image, embed) provide a height function of `width + attrs`. When the width changes the controller re-measures, and the virtualizer updates around it.
+- **Inline atoms** (mention, equation) are Yjs embeds occupying one offset that participate in Pretext's line-breaking as fixed-width boxes — the caret steps over them, hit-testing snaps to the nearer edge, and you can type around them.
+- The built-in `paragraph` / `heading` / `quote` / `code` are themselves just registered **text** nodes; your schema merges over them.
+
+## Inserting custom nodes
+
+```ts
+// atomic block after the current selection
+editor.insertBlockAfterSelection("image", { type: "image", src, ratio: 16 / 9 });
+
+// inline atom at the caret
+editor.insertInlineAtom({ type: "mention", label: "Ada Lovelace" });
+```
+
+The example app wires a `/` command palette for blocks and an `@` autocomplete
+for mentions on top of these primitives.

@@ -1,0 +1,223 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+@source "../node_modules/fumadocs-ui/dist/**/*.js";
+
+@theme {
+  --font-display: "Bricolage Grotesque", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Theme: warm paper · ink · botanical green ────────────────────────── */
+:root {
+  --color-fd-background: #f6f3ea;
+  --color-fd-foreground: #1a1c17;
+  --color-fd-muted: #ece8db;
+  --color-fd-muted-foreground: #6c6a5b;
+  --color-fd-border: #e0dac9;
+  --color-fd-primary: #15784d;
+  --color-fd-primary-foreground: #f6f3ea;
+  --color-fd-secondary: #e8e3d4;
+  --color-fd-secondary-foreground: #1a1c17;
+  --color-fd-accent: #e8e3d4;
+  --color-fd-accent-foreground: #1a1c17;
+  --color-fd-card: #fdfbf4;
+  --color-fd-card-foreground: #1a1c17;
+  --color-fd-popover: #fdfbf4;
+  --color-fd-popover-foreground: #1a1c17;
+  --color-fd-ring: #15784d;
+
+  --ink: #1a1c17;
+  --paper: #f6f3ea;
+  --accent: #15784d;
+}
+
+.dark {
+  --color-fd-background: #0f1310;
+  --color-fd-foreground: #e7ece0;
+  --color-fd-muted: #19201a;
+  --color-fd-muted-foreground: #8c9a86;
+  --color-fd-border: #232c23;
+  --color-fd-primary: #46cf8d;
+  --color-fd-primary-foreground: #0f1310;
+  --color-fd-secondary: #1b231c;
+  --color-fd-secondary-foreground: #e7ece0;
+  --color-fd-accent: #1e271e;
+  --color-fd-accent-foreground: #e7ece0;
+  --color-fd-card: #141a14;
+  --color-fd-card-foreground: #e7ece0;
+  --color-fd-popover: #141a14;
+  --color-fd-popover-foreground: #e7ece0;
+  --color-fd-ring: #46cf8d;
+
+  --ink: #e7ece0;
+  --paper: #0f1310;
+  --accent: #46cf8d;
+}
+
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* breathing room between sidebar items so hover never touches the active item */
+#nd-sidebar a[data-active] {
+  margin-block: 3px;
+}
+
+/* ── Type helpers ─────────────────────────────────────────────────────── */
+.ff-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+}
+.ff-mono {
+  font-family: var(--font-mono);
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Atmosphere ───────────────────────────────────────────────────────── */
+/* faint manuscript baseline rules */
+.baseline {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    color-mix(in oklab, var(--ink) 7%, transparent) 31px,
+    color-mix(in oklab, var(--ink) 7%, transparent) 32px
+  );
+}
+/* paper grain */
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+}
+.dark .grain::before {
+  mix-blend-mode: screen;
+  opacity: 0.28;
+}
+
+/* hairline that draws on hover */
+.ulink {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.ulink:hover {
+  background-size: 100% 1.5px;
+}
+
+/* ── Editor mock bits ─────────────────────────────────────────────────── */
+.mock-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: ori-blink 1.15s steps(1, end) infinite;
+}
+.mock-sel {
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+  padding: 0.05em 0;
+}
+.mock-pill {
+  border-radius: 5px;
+  padding: 0.02em 0.34em;
+  background: color-mix(in oklab, var(--ink) 9%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+.mock-chip {
+  border-radius: 6px;
+  padding: 0.06em 0.4em;
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.92em;
+}
+
+/* virtualization viewport band scanning */
+.viz-window {
+  animation: viz-scan 9s ease-in-out infinite alternate;
+}
+
+/* ── Live editor (the real @wingleeio/ori-react embed) ────────────────── */
+.live-editor {
+  --ori-caret: var(--accent);
+  --ori-selection: color-mix(in oklab, var(--accent) 20%, transparent);
+  --ori-placeholder: color-mix(in oklab, var(--color-fd-muted-foreground) 80%, transparent);
+  --ori-code-bg: color-mix(in oklab, var(--ink) 9%, transparent);
+  --ori-codeblock-bg: color-mix(in oklab, var(--ink) 6%, transparent);
+  --ori-quote-border: color-mix(in oklab, var(--accent) 55%, transparent);
+  --ori-quote-text: var(--color-fd-muted-foreground);
+  --ori-link: var(--accent);
+  color: var(--color-fd-foreground);
+}
+.live-editor .ori-scroller {
+  padding: 22px 26px 64px;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+@keyframes ori-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes viz-scan {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(220px);
+  }
+}
+
+.reveal {
+  opacity: 0;
+  animation: rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.d1 { animation-delay: 0.04s; }
+.d2 { animation-delay: 0.12s; }
+.d3 { animation-delay: 0.2s; }
+.d4 { animation-delay: 0.28s; }
+.d5 { animation-delay: 0.36s; }
+.d6 { animation-delay: 0.46s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .mock-caret,
+  .viz-window {
+    animation: none;
+    opacity: 1;
+  }
+}

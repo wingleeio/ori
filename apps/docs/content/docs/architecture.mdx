@@ -1,0 +1,70 @@
+---
+title: Architecture
+description: How Y.Doc, Pretext and the virtualizer fit together behind the EditorController.
+---
+
+The `EditorController` is the single place where the three pillars meet. UI
+bindings subscribe to it (`subscribe` / `getSnapshot`, designed for React's
+`useSyncExternalStore`) and call its imperative methods.
+
+## 1. Y.Doc — canonical state
+
+One `Y.Doc` per note. Inside it, a `Y.Array` of block `Y.Map`s:
+
+```text
+blocks: Y.Array
+  block: Y.Map
+    id:    string
+    type:  "paragraph" | "heading" | "quote" | "code" | <custom>
+    text:  Y.Text          // inline marks live in Y.Text attributes
+    attrs: Y.Map           // e.g. an image's src / ratio
+```
+
+Block-based structure (many small `Y.Text`s, not one giant one) is what makes
+virtualization, layout caching, selection and block operations tractable. **No
+layout data is ever stored in the Y.Doc.**
+
+## 2. Pretext — layout engine
+
+Given styled inline text, a width and typography, Pretext produces **materialized
+lines** so the browser never re-wraps:
+
+```text
+Y.Text delta → inline items → tokenize → greedy wrap → Line[] (+ fragments)
+```
+
+It also answers caret geometry, hit-testing (point → offset) and selection
+rectangles. Measurement is abstracted behind a `Measurer` — the browser uses
+`createCanvasMeasurer()`; tests use `createMonospaceMeasurer()`.
+
+Two tiers of layout keep it cheap:
+
+- **offscreen** blocks → height + line count only
+- **visible** blocks → full line / fragment / caret geometry
+
+## 3. Virtualization
+
+The controller maintains a height map and a `Virtualizer` that turns a scroll
+offset into a visible block range via binary search. Only those blocks render;
+selection and caret are drawn from **logical** positions (`{ blockId, offset }`)
+so they remain correct even when the relevant block is offscreen.
+
+Remote / offscreen edits follow the same path: apply the Yjs update → invalidate
+that block's layout cache → recompute its height → update the virtualizer —
+without producing any DOM until the block scrolls into view.
+
+## The cache
+
+Layout lives in a runtime cache keyed by
+`blockId + contentVersion + width + typographyKey`. It is pure derived state —
+recomputable from content + width + typography — and never persisted.
+
+## Avoiding layout drift
+
+The biggest risk is Pretext and the DOM disagreeing on typography. Ori addresses
+it structurally:
+
+- each rendered fragment carries the **exact** resolved font Pretext measured with;
+- lines are materialized (no native wrapping);
+- **no block, line or fragment carries padding/margins/borders that shift glyphs** — decoration that must not move text uses absolute pseudo-elements or `box-shadow` spread;
+- on web-font load the controller re-measures.

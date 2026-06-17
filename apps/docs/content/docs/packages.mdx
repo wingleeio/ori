@@ -1,0 +1,53 @@
+---
+title: Packages
+description: The three packages, the EditorController surface, and current limitations.
+---
+
+| Package | Responsibility | Depends on |
+| --- | --- | --- |
+| `@wingleeio/ori-pretext` | Pure layout engine: tokenize → wrap → materialized lines, caret geometry, hit-test, selection rects. **No DOM / Yjs / React.** | — |
+| `@wingleeio/ori-core` | Y.Doc block schema, delta↔inline, edit ops, `Virtualizer`, layout cache, node schema, and the `EditorController`. | `@wingleeio/ori-pretext`, `yjs` |
+| `@wingleeio/ori-react` | `useEditor`, `<NoteEditor>`, virtualized rendering, caret/selection overlay, keyboard + IME + mouse handling. | `@wingleeio/ori-core`, `react` |
+
+## EditorController
+
+The framework-agnostic runtime. Subscribe to it and call its methods:
+
+```ts
+import { EditorController, createCanvasMeasurer } from "@wingleeio/ori-core";
+
+const editor = new EditorController({ measurer: createCanvasMeasurer() });
+
+// viewport / layout
+editor.setWidth(720);
+editor.setViewport(scrollTop, viewportHeight);
+const snapshot = editor.getSnapshot(); // { visible, totalHeight, selection, ... }
+const layout = editor.getLayout(blockId); // detailed Pretext layout (cached)
+
+// editing
+editor.insertText("hello");
+editor.insertParagraphBreak();
+editor.toggleMark("bold");
+editor.moveCaret("down", /* extend */ true);
+editor.undo();
+
+// subscribe (e.g. via React's useSyncExternalStore)
+const unsub = editor.subscribe(() => render(editor.getSnapshot()));
+```
+
+It observes the Y.Doc (`observeDeep`), so local edits, undo/redo and remote
+updates all flow through one code path that bumps a per-block content version,
+invalidates the cache, remeasures, and notifies subscribers.
+
+## Status
+
+- **Phase 1–3 (done):** Y.Doc per note, persistence, Pretext height + line layout, block virtualization; caret/hit-testing, selection, split/merge, keyboard nav, undo/redo, clipboard; inline marks and styled-text selection rectangles.
+- **Extensibility (done):** schema-driven block + inline-atom registry, renderer registries.
+
+<Callout type="warn" title="Known limitations">
+  - Greedy (not Knuth–Plass) line breaking; long unbreakable words break per-character.
+  - Detailed layouts for visited blocks stay cached (no LRU eviction yet).
+  - One active note Y.Doc held in memory at a time (by design).
+  - No accessibility / touch / SSR yet — the editor is a custom surface with a hidden textarea, and `createCanvasMeasurer()` needs a browser (inject a `Measurer` for SSR/tests).
+  - No collaborative transport wired up — but every edit is already a Yjs update, so a provider drops straight in.
+</Callout>

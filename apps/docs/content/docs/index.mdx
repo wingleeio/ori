@@ -1,0 +1,43 @@
+---
+title: Introduction
+description: A local-first, virtualized note editor — Y.Doc is canonical state, Pretext computes layout, virtualization renders.
+---
+
+**Ori** is a local-first, virtualized note editor built on three independent pillars:
+
+```text
+Y.Doc          →  canonical document state (block-based CRDT)
+Pretext        →  text layout & measurement (line breaks, caret, hit-testing)
+Virtualization →  only the blocks in the viewport ever become DOM
+```
+
+Long notes stay fully editable and syncable while the DOM stays tiny. Layout is
+**derived, never stored** — it is recomputed from content, width and typography.
+
+```text
+Y.Doc   = canonical app state
+DOM     = rendered view (viewport only)
+Pretext = derived / cache-only layout
+```
+
+The core is **framework-agnostic**. React is the first binding; the same
+`EditorController` can drive Vue, Svelte, Solid, or a canvas renderer.
+
+## Why
+
+- **Local-first.** Every keystroke is a Yjs update — persist it, sync it, undo it. No server required.
+- **Scales.** Thousands of blocks, a few dozen DOM nodes. Heights come from Pretext; windowing from a binary-searched height map.
+- **Extensible.** Register custom, measurable nodes — block types (image, divider) and inline atoms (`@mention`) — with a `measure` function and a renderer.
+- **Honest layout.** Pretext measures with the same font the browser paints, and lines are materialized so the browser never re-wraps and disagrees.
+
+<Callout type="warn" title="Alpha (0.0.x)">
+  Ori is experimental. APIs may change between releases and it is not yet
+  production-ready. See the [packages](/docs/packages) page for the current
+  limitations.
+</Callout>
+
+## Next steps
+
+- [Getting started](/docs/getting-started) — install and render an editor.
+- [Architecture](/docs/architecture) — how Y.Doc, Pretext and the virtualizer fit.
+- [Extensibility](/docs/extensibility) — add your own measurable nodes.
