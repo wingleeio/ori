@@ -85,6 +85,22 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect((await screen.findByTestId("chip")).textContent).toBe("@Ada");
   });
 
+  it("virtualizes: renders a window of blocks + spacers, not the whole doc", () => {
+    const editor = new EditorController({
+      doc: createNoteDoc(Array.from({ length: 300 }, (_, i) => ({ text: `line ${i}` }))),
+      measurer: createMonospaceMeasurer(),
+      width: 400,
+    });
+    editor.setViewport(0, 600);
+    const { container } = render(<NoteEditor editor={editor} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    const blocks = ce.querySelectorAll("[data-block-id]").length;
+    expect(blocks).toBeGreaterThan(0);
+    expect(blocks).toBeLessThan(300);
+    expect(ce.querySelectorAll("[data-spacer]").length).toBe(2);
+    expect(screen.getByText("line 0")).toBeDefined();
+  });
+
   it("shows the placeholder for an empty document", () => {
     const editor = makeEditor([""]);
     render(<NoteEditor editor={editor} placeholder="Write here" />);

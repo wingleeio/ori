@@ -3,6 +3,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -148,7 +149,22 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     };
   }, []);
 
-  // Keep the controller's viewport in sync (for offscreen measurement later).
+  // Drive virtualization: keep the controller's width + viewport in sync.
+  useLayoutEffect(() => {
+    const sc = scrollerRef.current;
+    const content = contentRef.current;
+    if (!sc || !content) return;
+    const sync = () => {
+      editor.setWidth(content.clientWidth);
+      editor.setViewport(sc.scrollTop, sc.clientHeight);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(sc);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [editor]);
+
   const onScroll = () => {
     const sc = scrollerRef.current;
     if (sc) editor.setViewport(sc.scrollTop, sc.clientHeight);
