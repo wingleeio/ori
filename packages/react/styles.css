@@ -25,6 +25,15 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  /* Vertical drags scroll; we own taps/horizontal drags for caret + selection. */
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* While dragging a selection (long-press or a handle), take over fully so the
+   drag isn't stolen by the scroller. */
+.ori-scroller[data-touch-selecting] {
+  touch-action: none;
 }
 
 .ori-content {
@@ -35,6 +44,9 @@
   cursor: text;
   user-select: none;
   -webkit-user-select: none;
+  /* We render our own selection + handles, so suppress the native callout. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .ori-line {
@@ -91,6 +103,55 @@
   .ori-caret {
     animation: none;
   }
+}
+
+/* ── Touch selection handles (iOS-style) ─────────────────────────────────── */
+.ori-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ori-handle {
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 3;
+}
+
+/* Generous invisible hit target around the thin visual handle. */
+.ori-handle::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  right: -16px;
+  top: -20px;
+  bottom: -20px;
+}
+
+.ori-handle-bar {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--ori-handle, var(--ori-caret, #3884ff));
+}
+
+.ori-handle-knob {
+  position: absolute;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ori-handle, var(--ori-caret, #3884ff));
+}
+
+.ori-handle-start .ori-handle-knob {
+  top: -10px;
+}
+
+.ori-handle-end .ori-handle-knob {
+  bottom: -10px;
 }
 
 .ori-placeholder {

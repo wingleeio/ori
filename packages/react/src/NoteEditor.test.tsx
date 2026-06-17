@@ -78,6 +78,54 @@ describe("<NoteEditor>", () => {
     expect(screen.getByText("Write here")).toBeDefined();
   });
 
+  it("on touch devices, mirrors the block into the hidden input and diffs native edits", () => {
+    const orig = window.matchMedia;
+    window.matchMedia = ((q: string) => ({
+      matches: q.includes("coarse"),
+      media: q,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    })) as typeof window.matchMedia;
+    try {
+      const doc = createNoteDoc([{ text: "hello" }]);
+      let editor!: EditorController;
+      function Harness() {
+        editor = useEditor({ doc, measurer: createMonospaceMeasurer() });
+        return <NoteEditor editor={editor} />;
+      }
+      render(<Harness />);
+      const id = blockId(getBlocks(doc).get(0));
+      const input = document.querySelector(".ori-input") as HTMLTextAreaElement;
+      // focus + place a caret → the input mirrors the focused block's text
+      act(() => {
+        input.focus();
+        editor.setSelection(at(id, 5));
+      });
+      expect(input.value).toBe("hello");
+      // a native insertion (autocorrect / trackpad keyboard) reconciles by diff
+      act(() => {
+        input.value = "helloX";
+        input.setSelectionRange(6, 6);
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, data: "X", inputType: "insertText" }));
+      });
+      expect(editor.getBlockText(id)).toBe("helloX");
+      // native caret move (the iOS spacebar-trackpad fires selectionchange)
+      act(() => {
+        input.setSelectionRange(0, 0);
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(editor.getSelection()).toMatchObject({ focus: { blockId: id, offset: 0 } });
+    } finally {
+      window.matchMedia = orig;
+    }
+  });
+
   it("stays reactive under StrictMode (subscriptions survive the dev double-mount)", () => {
     const doc = createNoteDoc([{ text: "abc" }]);
     let editor!: EditorController;

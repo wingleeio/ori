@@ -53,6 +53,7 @@ import {
   isCollapsed,
   orderedRange,
   position,
+  wordBoundsAt,
   type Position,
   type Selection,
 } from "./selection";
@@ -554,6 +555,13 @@ export class EditorController {
     return this.selection;
   }
 
+  /** The current selection ordered `{ start, end }` in document order, or null. */
+  orderedSelection(): { start: Position; end: Position } | null {
+    if (!this.selection) return null;
+    const order = this.virtualizer.getOrder();
+    return orderedRange(this.selection, (id) => order.indexOf(id));
+  }
+
   setSelection(sel: Selection | null, opts?: { keepPreferredX?: boolean }): void {
     if (eqSelection(this.selection, sel)) return;
     this.selection = sel;
@@ -574,6 +582,23 @@ export class EditorController {
     const lastBlock = this.byId(last);
     const len = lastBlock ? blockText(lastBlock).length : 0;
     this.setSelection({ anchor: position(first, 0), focus: position(last, len) });
+  }
+
+  /** Select the word (or punctuation/atom cluster) at a position — double-tap. */
+  selectWordAt(pos: Position): void {
+    const { start, end } = wordBoundsAt(this.getBlockText(pos.blockId), pos.offset);
+    this.setSelection({
+      anchor: position(pos.blockId, start),
+      focus: position(pos.blockId, end),
+    });
+  }
+
+  /** Select a whole block's text — triple-tap. */
+  selectBlockAt(pos: Position): void {
+    this.setSelection({
+      anchor: position(pos.blockId, 0),
+      focus: position(pos.blockId, this.lengthOf(pos.blockId)),
+    });
   }
 
   private lengthOf(id: string): number {

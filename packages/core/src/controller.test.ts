@@ -78,6 +78,23 @@ describe("EditorController", () => {
     expect(ed.getSelectedText()).toBe("hello");
   });
 
+  it("selectWordAt / selectBlockAt select the word and the block (double/triple tap)", () => {
+    const { ed, firstId } = make(["hello world"]);
+    ed.selectWordAt({ blockId: firstId, offset: 8 });
+    expect(ed.getSelectedText()).toBe("world");
+    ed.selectBlockAt({ blockId: firstId, offset: 0 });
+    expect(ed.getSelectedText()).toBe("hello world");
+  });
+
+  it("selectWordAt picks an inline atom as its own word", () => {
+    const { ed, firstId } = make(["hi  there"]);
+    ed.setSelection(at(firstId, 3));
+    ed.insertInlineAtom({ type: "mention", label: "Ada" });
+    // text is now "hi ￼ there"; double-tap on the atom selects just it
+    ed.selectWordAt({ blockId: firstId, offset: 3 });
+    expect(ed.getSelectedText()).toBe("Ada");
+  });
+
   it("moves the caret across block boundaries", () => {
     const { ed, firstId } = make(["ab", "cd"]);
     ed.setSelection(at(firstId, 2));
