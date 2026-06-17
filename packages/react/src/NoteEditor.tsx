@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { EditorView } from "./ce/view";
 import { useEditorSnapshot } from "./hooks";
@@ -56,7 +57,19 @@ function caretClientRect(): DOMRect | null {
   const rects = r.getClientRects();
   if (rects.length) return rects[rects.length - 1];
   const b = r.getBoundingClientRect();
-  return b.height || b.width ? b : null;
+  if (b.height || b.width) return b;
+  // Empty block (`<br>` only): a collapsed range there has no client rects, so
+  // synthesize the caret from the block box + its line metrics. Without this the
+  // custom caret would vanish on empty lines (the native caret is hidden).
+  const node = r.startContainer;
+  const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)) ?? null;
+  if (!el) return null;
+  const eb = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padT = parseFloat(cs.paddingTop) || 0;
+  return new DOMRect(eb.left + padL, eb.top + padT, 0, lh);
 }
 
 /**
@@ -170,11 +183,32 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     if (sc) editor.setViewport(sc.scrollTop, sc.clientHeight);
   };
 
+  // Clicking the empty region below the content should focus the editor and put
+  // the caret at the document end (the usual "click to keep writing" affordance).
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (readOnly) return;
+    if ((e.target as HTMLElement).closest("[data-block-id]")) return; // real block → browser
+    const content = contentRef.current;
+    const blocks = content?.querySelectorAll("[data-block-id]");
+    const last = blocks && (blocks[blocks.length - 1] as HTMLElement | undefined);
+    if (!content || !last) return;
+    if (e.clientY <= last.getBoundingClientRect().bottom) return; // beside text, not below
+    e.preventDefault();
+    content.focus();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(last);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
   const showCaret = focused && !!caret && !readOnly;
 
   return (
     <div className={`ori-root${className ? ` ${className}` : ""}`} style={style}>
-      <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll}>
+      <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll} onPointerDown={onPointerDown}>
         <div className="ori-content" style={{ maxWidth, marginInline: "auto", position: "relative" }}>
           <div
             className="ori-canvas ori-ce"
