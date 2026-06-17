@@ -61,7 +61,11 @@ export class EditorView {
     const onSelChange = () => {
       if (this.applyingModel || this.composing) return;
       const sel = this.readSelection();
-      if (sel) this.editor.setSelection(sel);
+      if (!sel) return;
+      this.editor.setSelection(sel);
+      // DOM is already the source of truth here — record the revision so the
+      // resulting React sync() doesn't write the selection back and collapse it.
+      this.lastRevision = this.rev();
     };
     document.addEventListener("selectionchange", onSelChange);
     this.detachers.push(() => document.removeEventListener("selectionchange", onSelChange));
@@ -91,8 +95,11 @@ export class EditorView {
   sync() {
     const rev = this.rev();
     if (rev === this.lastRevision) return;
-    this.renderBlocks();
-    this.writeSelection();
+    // Only restore the DOM selection when the *content* changed (app command,
+    // undo, remote). A selection-only change is already correct in the DOM, and
+    // writing it back would fight (and collapse) the user's native selection.
+    const changed = this.renderBlocks();
+    if (changed) this.writeSelection();
     this.lastRevision = rev;
   }
 
@@ -108,8 +115,10 @@ export class EditorView {
     return this.editor.getBlockType(id) + "|" + JSON.stringify(this.editor.getInline(id));
   }
 
-  /** Reconcile the block list + any blocks whose content changed. */
-  private renderBlocks() {
+  /** Reconcile the block list + any blocks whose content changed. Returns true
+   *  if the DOM was mutated (so callers know whether to restore the selection). */
+  private renderBlocks(): boolean {
+    let changed = false;
     const ids = this.editor.blockIds();
     ids.forEach((id, i) => {
       let el = this.root.children[i] as HTMLElement | undefined;
@@ -117,18 +126,22 @@ export class EditorView {
         const existing = this.root.querySelector(`[data-block-id="${esc(id)}"]`) as HTMLElement | null;
         el = existing ?? this.makeBlock(id);
         this.root.insertBefore(el, this.root.children[i] ?? null);
+        changed = true;
       }
       const sig = this.sig(id);
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
         this.renderBlockInner(el, id);
+        changed = true;
       }
     });
     while (this.root.children.length > ids.length) {
       const extra = this.root.lastElementChild as HTMLElement;
       this.unmountRootsIn(extra);
       extra.remove();
+      changed = true;
     }
+    return changed;
   }
 
   private makeBlock(id: string): HTMLElement {

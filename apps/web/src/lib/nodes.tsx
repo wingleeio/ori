@@ -112,9 +112,8 @@ export const atomRenderers: Record<string, AtomRenderer> = {
     const label = mentionLabel((atom.data as Record<string, unknown>) ?? {});
     return (
       <span
-        className="inline-flex w-full items-center justify-center rounded-md bg-primary/15 font-medium text-primary"
+        className="inline-flex items-center rounded-md bg-primary/15 font-medium text-primary"
         style={{
-          boxSizing: "border-box",
           fontSize: CHIP_FONT_SIZE,
           fontWeight: 500,
           padding: `0 ${CHIP_PAD}px`,

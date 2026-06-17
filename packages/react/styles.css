@@ -84,6 +84,15 @@
   text-decoration: underline line-through;
 }
 
+/* inline atoms (mentions etc.): a single, non-editable inline object */
+.ori-ce .ori-atom {
+  display: inline-block;
+  vertical-align: baseline;
+  white-space: nowrap;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
 /* block typography (CSS-driven now the browser handles layout) */
 .ori-ce .ori-block-heading {
   margin: 0;

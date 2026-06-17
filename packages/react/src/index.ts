@@ -9,10 +9,6 @@ export type { UseEditorOptions } from "./useEditor";
 export { useEditorSnapshot, useActiveMarks } from "./hooks";
 export { NoteEditor } from "./NoteEditor";
 export type { NoteEditorProps, NoteEditorHandle, ViewportRect } from "./NoteEditor";
-export { BlockView } from "./BlockView";
-export { SelectionLayer, CaretLayer } from "./Overlay";
-export { handleKeyDown, pasteText } from "./keymap";
-export type { KeymapOptions } from "./keymap";
 export { useRenderers } from "./renderers";
 export type {
   BlockRenderer,

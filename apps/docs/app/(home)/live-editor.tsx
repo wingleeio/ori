@@ -82,10 +82,7 @@ const atomRenderers: Record<string, AtomRenderer> = {
     <span
       style={{
         display: "inline-flex",
-        width: "100%",
         alignItems: "center",
-        justifyContent: "center",
-        boxSizing: "border-box",
         whiteSpace: "nowrap",
         fontSize: CHIP_FONT,
         fontWeight: 500,
