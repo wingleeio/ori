@@ -209,10 +209,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     // places the caret) and not on floating UI (menus) layered into the overlay.
     const t = e.target as HTMLElement;
     const onSurface =
-      t === scrollerRef.current ||
-      t === overlayRef.current ||
-      t.classList.contains("ori-ce") ||
-      t.dataset.spacer != null;
+      t === scrollerRef.current || t === overlayRef.current || t.classList.contains("ori-ce");
     if (!onSurface) return;
     const content = contentRef.current;
     const blocks = content?.querySelectorAll("[data-block-id]");
