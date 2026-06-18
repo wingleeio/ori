@@ -645,27 +645,36 @@ export class EditorController {
   }
 
   /**
-   * The current selection's content as inline runs, one array per spanned block
-   * (clipped to the selection's start/end offsets). Used to put styled content
-   * on the clipboard so marks survive copy/paste. Empty if nothing is selected.
+   * The current selection's content as `{ type, items }` per spanned block — the
+   * block type plus its inline runs, clipped to the selection's start/end offsets.
+   * Used to put styled content on the clipboard so marks *and* block types survive
+   * copy/paste. Empty if nothing is selected.
    */
-  getSelectionInline(): InlineItem[][] {
+  getSelectionBlocks(): { type: BlockType; items: InlineItem[] }[] {
     const sel = this.selection;
     if (!sel || isCollapsed(sel)) return [];
     const { start, end } = orderedRange(sel, this.indexOf);
     const order = this.virtualizer.getOrder();
     const si = this.indexOf(start.blockId);
     const ei = this.indexOf(end.blockId);
-    const out: InlineItem[][] = [];
+    const out: { type: BlockType; items: InlineItem[] }[] = [];
     for (let i = si; i <= ei; i += 1) {
       const id = order[i];
       const items = this.getInline(id);
       const len = blockText(this.byId(id)!).length;
       const from = i === si ? start.offset : 0;
       const to = i === ei ? end.offset : len;
-      out.push(clipInline(items, from, to));
+      out.push({ type: this.getBlockType(id), items: clipInline(items, from, to) });
     }
     return out;
+  }
+
+  /**
+   * The selection's content as inline runs, one array per spanned block. A
+   * type-less view of {@link getSelectionBlocks}.
+   */
+  getSelectionInline(): InlineItem[][] {
+    return this.getSelectionBlocks().map((b) => b.items);
   }
 
   /** A block's `attrs` as a plain object (for custom block renderers). */

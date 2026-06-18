@@ -1,9 +1,9 @@
-import type { EditorController, InlineItem } from "@wingleeio/ori-core";
+import type { EditorController } from "@wingleeio/ori-core";
 import { isCollapsed } from "@wingleeio/ori-core";
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AtomRenderer, BlockRenderer } from "../renderers";
-import { ORI_MIME, deserializeOri, htmlToBlocks, serializeSelection, textToBlocks } from "./clipboard";
+import { ORI_MIME, deserializeOri, htmlToBlocks, serializeSelection, textToBlocks, type ClipBlock } from "./clipboard";
 import { blockElOf, buildRun, domToModel, esc, modelToDom } from "./dom";
 
 const PLACEHOLDER = "￼";
@@ -445,9 +445,9 @@ export class EditorView {
 
   // --- clipboard ---------------------------------------------------------
 
-  /** Copy/cut: put plain, HTML and a private (mark-preserving) payload on the clipboard. */
+  /** Copy/cut: put plain, HTML and a private (mark+type-preserving) payload on the clipboard. */
   private onClipboard(e: ClipboardEvent, isCut: boolean) {
-    const blocks = this.editor.getSelectionInline();
+    const blocks = this.editor.getSelectionBlocks();
     if (!blocks.length || !e.clipboardData) return;
     e.preventDefault();
     const { text, html, json } = serializeSelection(blocks);
@@ -479,10 +479,16 @@ export class EditorView {
     this.commit();
   }
 
-  private pasteBlocks(blocks: InlineItem[][]) {
-    blocks.forEach((items, i) => {
+  private pasteBlocks(blocks: ClipBlock[]) {
+    blocks.forEach((blk, i) => {
       if (i > 0) this.editor.insertParagraphBreak();
-      if (items.length) this.editor.insertInline(items);
+      // Adopt the pasted block type when we're filling a fresh block (a new block
+      // from the break above, or an empty target) — so a pasted heading stays a
+      // heading — but keep the existing type when merging into a block with text.
+      const sel = this.editor.getSelection();
+      const targetEmpty = sel ? this.editor.getBlockText(sel.focus.blockId).length === 0 : true;
+      if (blk.items.length) this.editor.insertInline(blk.items);
+      if (i > 0 || targetEmpty) this.editor.setBlockTypeAtSelection(blk.type);
     });
   }
 }

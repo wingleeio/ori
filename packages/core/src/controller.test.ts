@@ -330,6 +330,17 @@ describe("EditorController", () => {
       expect(isCollapsed(ed.getSelection()!)).toBe(true);
     });
 
+    it("getSelectionBlocks carries each block's type + clipped runs", () => {
+      const { ed } = make(["Heading", "body text"]);
+      const [h, p] = ed.blockIds();
+      ed.setSelection(at(h, 0));
+      ed.setBlockTypeAtSelection("heading");
+      ed.setSelection({ anchor: { blockId: h, offset: 0 }, focus: { blockId: p, offset: 4 } });
+      const blocks = ed.getSelectionBlocks();
+      expect(blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+      expect(blocks.map((b) => b.items.map((r) => r.text).join(""))).toEqual(["Heading", "body"]);
+    });
+
     it("insertInlineAtom inserts one offset; deleteBackward removes the whole atom", () => {
       const { ed, firstId } = make(["ab"]);
       ed.setSelection(at(firstId, 2));
