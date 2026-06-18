@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
-  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
@@ -59,27 +60,40 @@ const MENU = "animate-fade-in overflow-hidden rounded-xl border border-fd-border
 const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm";
 
 /**
- * Position a caret-anchored menu (slash / mention) inside the editor's content
- * overlay with content-relative coordinates, so it rides the scroll natively
- * instead of trailing it (same approach as the selection toolbar). Returns the
- * portal target + style, or null when closed/unavailable.
+ * Keep a caret-anchored menu (slash / mention) glued to the caret. The menu is a
+ * fixed overlay portaled to <body>, so it floats above the editor and never
+ * affects the editor's scroll size (only text drives overflow). A rAF loop
+ * re-reads the caret each frame so it rides the scroll without shaking, flipping
+ * above/below relative to the scroll viewport's edge. Returns a ref for the menu.
  */
-function caretMenu(editorRef: Ref, open: boolean, width: number): { style: CSSProperties; overlay: HTMLElement } | null {
-  if (!open) return null;
-  const c = editorRef.current?.getCaretRect();
-  const overlay = editorRef.current?.getOverlayElement();
-  if (!c || !overlay) return null;
-  const box = overlay.getBoundingClientRect();
-  const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
-  const vpBottom = sc ? sc.bottom : window.innerHeight;
-  const vpTop = sc ? sc.top : 0;
-  const placeAbove = c.y + c.height + 280 > vpBottom && c.y - vpTop > 280;
-  const topVp = placeAbove ? c.y - 6 : c.y + c.height + 6;
-  const left = Math.max(0, Math.min(c.x - box.left, box.width - width - 8));
-  return {
-    style: { top: topVp - box.top, left, transform: placeAbove ? "translateY(-100%)" : undefined },
-    overlay,
-  };
+function useCaretMenu(editorRef: Ref, open: boolean, width: number, maxHeight = 320) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const place = () => {
+      const el = ref.current;
+      const c = editorRef.current?.getCaretRect();
+      if (el && c) {
+        const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        const vpTop = sc ? sc.top : 0;
+        const vpBottom = sc ? sc.bottom : window.innerHeight;
+        const above = c.y + c.height + maxHeight > vpBottom && c.y - vpTop > maxHeight;
+        el.style.top = `${above ? c.y - 6 : c.y + c.height + 6}px`;
+        el.style.left = `${Math.max(8, Math.min(c.x, window.innerWidth - width - 8))}px`;
+        el.style.transform = above ? "translateY(-100%)" : "";
+        el.style.visibility = "visible";
+      }
+    };
+    place();
+    const loop = () => {
+      place();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [open, editorRef, width, maxHeight]);
+  return ref;
 }
 
 export function SlashMenu({ editor, editorRef }: { editor: EditorController; editorRef: Ref }) {
@@ -126,10 +140,10 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, commands, index, key]);
 
-  const m = caretMenu(editorRef, open, 264);
-  if (!m) return null;
+  const menuRef = useCaretMenu(editorRef, open, 264);
+  if (!open) return null;
   return createPortal(
-    <div className="absolute z-40 w-[264px]" style={m.style} onMouseDown={keepFocus}>
+    <div ref={menuRef} className="fixed z-40 w-[264px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>
       <div className={MENU}>
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fd-muted-foreground/70">Blocks & formatting</div>
         {commands.map((c, i) => (
@@ -143,7 +157,7 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
         ))}
       </div>
     </div>,
-    m.overlay,
+    document.body,
   );
 }
 
@@ -196,10 +210,10 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, people, index, key]);
 
-  const m = caretMenu(editorRef, open, 260);
-  if (!m) return null;
+  const menuRef = useCaretMenu(editorRef, open, 260);
+  if (!open) return null;
   return createPortal(
-    <div className="absolute z-40 w-[260px]" style={m.style} onMouseDown={keepFocus}>
+    <div ref={menuRef} className="fixed z-40 w-[260px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>
       <div className={MENU}>
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fd-muted-foreground/70">People</div>
         {people.map((p, i) => (
@@ -210,7 +224,7 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
         ))}
       </div>
     </div>,
-    m.overlay,
+    document.body,
   );
 }
 

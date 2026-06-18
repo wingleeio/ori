@@ -2,7 +2,7 @@ import { isCollapsed, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { caretMenu } from "@/lib/caretMenu";
+import { useCaretMenu } from "@/lib/caretMenu";
 import { filterSlashCommands, type SlashCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 
@@ -100,12 +100,16 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, commands, index, key]);
 
+  const menuRef = useCaretMenu(editorRef, open, MENU_WIDTH, MAX_HEIGHT);
   if (!open) return null;
-  const m = caretMenu(editorRef, MENU_WIDTH, MAX_HEIGHT);
-  if (!m) return null;
 
   return createPortal(
-    <div className="z-40" style={m.style} onMouseDown={(e) => e.preventDefault()}>
+    <div
+      ref={menuRef}
+      className="fixed z-40"
+      style={{ top: 0, left: 0, width: MENU_WIDTH, visibility: "hidden" }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
       {/* Animation on an inner element so it never overrides the parent's
           positioning transform (which caused the menu to jump on open). */}
       <div className="animate-fade-in overflow-hidden rounded-xl bg-popover p-1 shadow-xl ring-1 ring-border/60">
@@ -139,6 +143,6 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
         </div>
       </div>
     </div>,
-    m.overlay,
+    document.body,
   );
 }
