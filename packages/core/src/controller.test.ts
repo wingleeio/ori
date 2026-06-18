@@ -2,6 +2,7 @@ import { createMonospaceMeasurer } from "@wingleeio/ori-pretext";
 import { describe, expect, it } from "vitest";
 import { EditorController } from "./controller";
 import { blockId, createNoteDoc, getBlocks } from "./schema";
+import { isCollapsed } from "./selection";
 
 function make(texts?: string[]) {
   const doc = texts ? createNoteDoc(texts.map((t) => ({ text: t }))) : createNoteDoc();
@@ -211,5 +212,135 @@ describe("EditorController", () => {
     ed.insertParagraphBreak();
     ed.insertInline([{ text: "b", start: 0 }]);
     expect(ed.blockIds().map((id) => ed.getBlockText(id))).toEqual(["starta", "b"]);
+  });
+
+  describe("editing operations", () => {
+    const texts = (ed: EditorController) => ed.blockIds().map((id) => ed.getBlockText(id));
+
+    it("deleteBackward removes the char before the caret", () => {
+      const { ed, firstId } = make(["abcd"]);
+      ed.setSelection(at(firstId, 2));
+      ed.deleteBackward();
+      expect(ed.getBlockText(firstId)).toBe("acd");
+      expect(ed.getSelection()!.focus.offset).toBe(1);
+    });
+
+    it("deleteBackward at offset 0 merges into the previous block", () => {
+      const { ed } = make(["one", "two"]);
+      const [a, b] = ed.blockIds();
+      ed.setSelection(at(b, 0));
+      ed.deleteBackward();
+      expect(texts(ed)).toEqual(["onetwo"]);
+      const sel = ed.getSelection()!;
+      expect(sel.focus.blockId).toBe(a);
+      expect(sel.focus.offset).toBe(3);
+    });
+
+    it("deleteForward removes the char after the caret", () => {
+      const { ed, firstId } = make(["abcd"]);
+      ed.setSelection(at(firstId, 1));
+      ed.deleteForward();
+      expect(ed.getBlockText(firstId)).toBe("acd");
+      expect(ed.getSelection()!.focus.offset).toBe(1);
+    });
+
+    it("deleteForward at block end merges the next block in", () => {
+      const { ed } = make(["one", "two"]);
+      const [a] = ed.blockIds();
+      ed.setSelection(at(a, 3));
+      ed.deleteForward();
+      expect(texts(ed)).toEqual(["onetwo"]);
+      expect(ed.getSelection()!.focus).toEqual({ blockId: a, offset: 3 });
+    });
+
+    it("deleting a non-collapsed selection removes the range", () => {
+      const { ed, firstId } = make(["abcdef"]);
+      ed.setSelection({ anchor: { blockId: firstId, offset: 1 }, focus: { blockId: firstId, offset: 4 } });
+      ed.deleteBackward();
+      expect(ed.getBlockText(firstId)).toBe("aef");
+    });
+
+    it("deleting a cross-block selection joins the ends", () => {
+      const { ed } = make(["hello", "middle", "world"]);
+      const [a, , c] = ed.blockIds();
+      ed.setSelection({ anchor: { blockId: a, offset: 2 }, focus: { blockId: c, offset: 3 } });
+      ed.deleteBackward();
+      expect(texts(ed)).toEqual(["held"]);
+    });
+
+    it("insertParagraphBreak splits at the caret (start / middle / end)", () => {
+      const mid = make(["abcd"]);
+      mid.ed.setSelection(at(mid.firstId, 2));
+      mid.ed.insertParagraphBreak();
+      expect(texts(mid.ed)).toEqual(["ab", "cd"]);
+
+      const start = make(["abcd"]);
+      start.ed.setSelection(at(start.firstId, 0));
+      start.ed.insertParagraphBreak();
+      expect(texts(start.ed)).toEqual(["", "abcd"]);
+
+      const end = make(["abcd"]);
+      end.ed.setSelection(at(end.firstId, 4));
+      end.ed.insertParagraphBreak();
+      expect(texts(end.ed)).toEqual(["abcd", ""]);
+      expect(end.ed.getSelection()!.focus.offset).toBe(0);
+    });
+
+    it("toggleMark on a collapsed caret stages a pending mark applied to the next text", () => {
+      const { ed, firstId } = make(["x"]);
+      ed.setSelection(at(firstId, 1));
+      ed.toggleMark("bold");
+      expect(ed.getActiveMarks().bold).toBe(true);
+      ed.insertText("Y");
+      const bold = ed.getInline(firstId).find((r) => r.text === "Y");
+      expect(bold?.marks?.bold).toBe(true);
+    });
+
+    it("getActiveMarks over a partially-bold range reports the mark off", () => {
+      const { ed, firstId } = make(["abcd"]);
+      ed.setSelection({ anchor: { blockId: firstId, offset: 0 }, focus: { blockId: firstId, offset: 2 } });
+      ed.toggleMark("bold");
+      ed.setSelection({ anchor: { blockId: firstId, offset: 0 }, focus: { blockId: firstId, offset: 4 } });
+      expect(ed.getActiveMarks().bold).toBeFalsy();
+    });
+
+    it("setBlockTypeAtSelection changes one block, then a multi-block range", () => {
+      const { ed } = make(["a", "b", "c"]);
+      const [x, y, z] = ed.blockIds();
+      ed.setSelection(at(y, 0));
+      ed.setBlockTypeAtSelection("quote");
+      expect(ed.getBlockType(x)).toBe("paragraph");
+      expect(ed.getBlockType(y)).toBe("quote");
+      expect(ed.getBlockType(z)).toBe("paragraph");
+      expect(ed.blockTypeAtSelection()).toBe("quote");
+
+      ed.setSelection({ anchor: { blockId: x, offset: 0 }, focus: { blockId: z, offset: 1 } });
+      ed.setBlockTypeAtSelection("heading");
+      expect([x, y, z].map((id) => ed.getBlockType(id))).toEqual(["heading", "heading", "heading"]);
+    });
+
+    it("selectAll spans the whole document; collapse re-collapses it", () => {
+      const { ed } = make(["a", "b", "c"]);
+      const ids = ed.blockIds();
+      ed.selectAll();
+      const sel = ed.getSelection()!;
+      expect(sel.anchor.blockId).toBe(ids[0]);
+      expect(sel.focus.blockId).toBe(ids[2]);
+      ed.collapse(sel.focus);
+      expect(isCollapsed(ed.getSelection()!)).toBe(true);
+    });
+
+    it("insertInlineAtom inserts one offset; deleteBackward removes the whole atom", () => {
+      const { ed, firstId } = make(["ab"]);
+      ed.setSelection(at(firstId, 2));
+      ed.insertInlineAtom({ type: "mention", label: "Z" });
+      ed.insertText("cd");
+      expect(ed.getBlockText(firstId).length).toBe(5); // ab + atom(1) + cd
+      expect(ed.getInline(firstId).some((r) => r.atom)).toBe(true);
+      ed.setSelection(at(firstId, 3)); // right after the atom
+      ed.deleteBackward();
+      expect(ed.getBlockText(firstId)).toBe("abcd");
+      expect(ed.getInline(firstId).some((r) => r.atom)).toBe(false);
+    });
   });
 });

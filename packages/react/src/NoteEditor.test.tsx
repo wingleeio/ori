@@ -85,7 +85,7 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect((await screen.findByTestId("chip")).textContent).toBe("@Ada");
   });
 
-  it("virtualizes: renders a window of blocks + spacers, not the whole doc", () => {
+  it("virtualizes: renders a window of blocks with padding for the rest (no spacer elements)", () => {
     const editor = new EditorController({
       doc: createNoteDoc(Array.from({ length: 300 }, (_, i) => ({ text: `line ${i}` }))),
       measurer: createMonospaceMeasurer(),
@@ -97,7 +97,9 @@ describe("<NoteEditor> (contentEditable)", () => {
     const blocks = ce.querySelectorAll("[data-block-id]").length;
     expect(blocks).toBeGreaterThan(0);
     expect(blocks).toBeLessThan(300);
-    expect(ce.querySelectorAll("[data-spacer]").length).toBe(2);
+    // Off-screen height is padding, not spacer elements the caret could enter.
+    expect(ce.querySelectorAll("[data-spacer]").length).toBe(0);
+    expect(parseFloat(ce.style.paddingBottom)).toBeGreaterThan(0);
     expect(screen.getByText("line 0")).toBeDefined();
   });
 
