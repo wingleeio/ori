@@ -101,6 +101,18 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect(screen.getByText("line 0")).toBeDefined();
   });
 
+  it("renders a hard line break (\\n) as a <br> element, not raw text", () => {
+    const editor = makeEditor(["a\nb"]);
+    const { container } = render(<NoteEditor editor={editor} />);
+    const block = container.querySelector("[data-block-id]") as HTMLElement;
+    const br = block.querySelector("br[data-break]") as HTMLElement;
+    expect(br).not.toBeNull();
+    expect(br.dataset.off).toBe("1");
+    // two text spans ("a" and "b") around the break
+    const runs = [...block.querySelectorAll("span[data-off]")].map((s) => s.textContent);
+    expect(runs).toEqual(["a", "b"]);
+  });
+
   it("keeps an empty block selectable (renders a <br>)", () => {
     const editor = makeEditor(["has text", ""]);
     const { container } = render(<NoteEditor editor={editor} />);

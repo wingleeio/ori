@@ -1,35 +1,46 @@
 import type { NoteEditorHandle } from "@wingleeio/ori-react";
-import type { CSSProperties, RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 
 /**
- * Position a caret-anchored menu (slash / mention) inside the editor's content
- * overlay with content-relative coordinates, so it rides the scroll natively
- * rather than trailing it (the same approach as the selection toolbar). Render
- * the returned `style` on an element portaled into `overlay`.
+ * Keep a caret-anchored menu (slash / mention) glued to the caret. The menu is
+ * a fixed overlay portaled to <body>, so it floats above the editor and never
+ * affects the editor's scroll size (only text drives overflow). A rAF loop
+ * re-reads the caret each frame so it rides the scroll without shaking, and
+ * flips above/below relative to the scroll viewport's edge.
+ *
+ * Returns a ref to attach to the (body-portaled, position:fixed) menu element.
  */
-export function caretMenu(
+export function useCaretMenu(
   editorRef: RefObject<NoteEditorHandle | null>,
+  open: boolean,
   width: number,
   maxHeight = 320,
-): { style: CSSProperties; overlay: HTMLElement } | null {
-  const c = editorRef.current?.getCaretRect();
-  const overlay = editorRef.current?.getOverlayElement();
-  if (!c || !overlay) return null;
-  const box = overlay.getBoundingClientRect();
-  const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
-  const vpBottom = sc ? sc.bottom : window.innerHeight;
-  const vpTop = sc ? sc.top : 0;
-  const placeAbove = c.y + c.height + maxHeight > vpBottom && c.y - vpTop > maxHeight;
-  const topVp = placeAbove ? c.y - 6 : c.y + c.height + 6;
-  const left = Math.max(0, Math.min(c.x - box.left, box.width - width - 8));
-  return {
-    style: {
-      position: "absolute",
-      top: topVp - box.top,
-      left,
-      width,
-      transform: placeAbove ? "translateY(-100%)" : undefined,
-    },
-    overlay,
-  };
+): RefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const place = () => {
+      const el = ref.current;
+      const c = editorRef.current?.getCaretRect();
+      if (el && c) {
+        const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        const vpTop = sc ? sc.top : 0;
+        const vpBottom = sc ? sc.bottom : window.innerHeight;
+        const above = c.y + c.height + maxHeight > vpBottom && c.y - vpTop > maxHeight;
+        el.style.top = `${above ? c.y - 6 : c.y + c.height + 6}px`;
+        el.style.left = `${Math.max(8, Math.min(c.x, window.innerWidth - width - 8))}px`;
+        el.style.transform = above ? "translateY(-100%)" : "";
+        el.style.visibility = "visible";
+      }
+    };
+    place();
+    const loop = () => {
+      place();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [open, editorRef, width, maxHeight]);
+  return ref;
 }

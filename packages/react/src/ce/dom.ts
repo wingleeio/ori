@@ -85,8 +85,8 @@ export function modelToDom(
     const start = Number(span.dataset.off);
     const len = spanLen(span);
     if (offset <= start + len) {
-      if (span.dataset.atom != null) {
-        // atom: place before or after it (offset is start or start+1)
+      if (span.dataset.atom != null || span.dataset.break != null) {
+        // atom or hard break (<br>): place before or after it by child index
         const idx = Array.prototype.indexOf.call(blockEl.childNodes, span);
         return { node: blockEl, offset: offset <= start ? idx : idx + 1 };
       }

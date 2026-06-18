@@ -65,10 +65,19 @@ function caretClientRect(): DOMRect | null {
   if (rects.length) return rects[rects.length - 1];
   const b = r.getBoundingClientRect();
   if (b.height || b.width) return b;
+  const node = r.startContainer;
+  // Caret sits just after an inline atom (a contentEditable=false chip) with no
+  // text to measure: anchor it to the atom's right edge so it stays visible.
+  if (node.nodeType === Node.ELEMENT_NODE && r.startOffset > 0) {
+    const prev = (node as HTMLElement).childNodes[r.startOffset - 1];
+    if (prev instanceof HTMLElement && prev.dataset.atom != null) {
+      const pb = prev.getBoundingClientRect();
+      if (pb.height || pb.width) return new DOMRect(pb.right, pb.top, 0, pb.height || 18);
+    }
+  }
   // Empty block (`<br>` only): a collapsed range there has no client rects, so
   // synthesize the caret from the block box + its line metrics. Without this the
   // custom caret would vanish on empty lines (the native caret is hidden).
-  const node = r.startContainer;
   const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)) ?? null;
   if (!el) return null;
   const eb = el.getBoundingClientRect();
