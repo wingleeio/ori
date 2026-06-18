@@ -58,6 +58,31 @@ function seedDoc(): Y.Doc {
       { text: "@", marks: { code: true } },
       { text: " to mention someone." },
     ]);
+
+    add("heading", [{ text: "How it fits together" }]);
+    add("paragraph", [
+      { text: "Every block is a row in a " },
+      { text: "Y.Array", marks: { code: true } },
+      { text: ", so structure and text are " },
+      { text: "collaborative by default", marks: { italic: true } },
+      { text: ". Press " },
+      { text: "Enter", marks: { code: true } },
+      { text: " to split a paragraph, " },
+      { text: "Backspace", marks: { code: true } },
+      { text: " at the start to merge it back." },
+    ]);
+    add("quote", [
+      { text: "Layout is derived, never stored — Pretext re-flows the runs into lines on demand.", marks: { italic: true } },
+    ]);
+    add("paragraph", [{ text: "A slash command can turn any line into a heading, quote, or code block:" }]);
+    add("code", [{ text: "const update = Y.encodeStateAsUpdate(doc);" }]);
+    add("paragraph", [
+      { text: "Copy a few of these blocks and paste them anywhere — marks " },
+      { text: "and", marks: { bold: true } },
+      { text: " block types come along. Happy editing, " },
+      { embed: { type: "mention", label: "friend" } },
+      { text: "." },
+    ]);
   });
   return doc;
 }

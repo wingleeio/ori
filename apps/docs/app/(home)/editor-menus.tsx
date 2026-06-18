@@ -96,6 +96,41 @@ function useCaretMenu(editorRef: Ref, open: boolean, width: number, maxHeight = 
   return ref;
 }
 
+/**
+ * Position a selection toolbar centered above (or below, near the top) the
+ * selection, in a <body>-portaled fixed overlay clamped to the viewport so it
+ * never gets clipped at the editor's edges. Returns a ref for the menu.
+ */
+function useSelectionToolbar(editorRef: Ref, open: boolean) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const place = () => {
+      const el = ref.current;
+      const r = editorRef.current?.getSelectionRect();
+      if (el && r) {
+        const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        const above = r.top - (sc ? sc.top : 0) >= 44;
+        const w = el.offsetWidth || 0;
+        const cx = r.left + r.width / 2;
+        el.style.top = `${above ? r.top - 8 : r.bottom + 8}px`;
+        el.style.left = `${Math.max(8 + w / 2, Math.min(cx, window.innerWidth - 8 - w / 2))}px`;
+        el.style.transform = above ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+        el.style.visibility = "visible";
+      }
+    };
+    place();
+    const loop = () => {
+      place();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [open, editorRef]);
+  return ref;
+}
+
 export function SlashMenu({ editor, editorRef }: { editor: EditorController; editorRef: Ref }) {
   const snap = useEditorSnapshot(editor);
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -244,26 +279,16 @@ export function SelectionMenu({ editor, editorRef }: { editor: EditorController;
   const snap = useEditorSnapshot(editor);
   void snap.revision;
   const sel = snap.selection;
-  if (!sel || isCollapsed(sel)) return null;
-  const rect = editorRef.current?.getSelectionRect();
-  const overlay = editorRef.current?.getOverlayElement();
-  if (!rect || !overlay) return null;
+  const open = !!sel && !isCollapsed(sel);
+  const ref = useSelectionToolbar(editorRef, open);
+  if (!open) return null;
 
   const marks = editor.getActiveMarks();
   const blockType = (editor.blockTypeAtSelection() ?? "paragraph") as BlockType;
-  // Position inside the scrolling content layer (content-relative coords) so the
-  // toolbar rides the scroll natively instead of trailing it. Flip below when the
-  // selection is too close to the scroller's top edge to fit the toolbar above.
-  const box = overlay.getBoundingClientRect();
-  const scTop = editorRef.current?.getScrollElement()?.getBoundingClientRect().top ?? box.top;
-  const below = rect.top - scTop < 44;
-  const style = {
-    top: (below ? rect.bottom + 8 : rect.top - 8) - box.top,
-    left: rect.left + rect.width / 2 - box.left,
-    transform: below ? "translate(-50%, 0)" : "translate(-50%, -100%)",
-  };
+  // Float in a <body> portal, clamped to the viewport (rAF-positioned), so the
+  // toolbar never gets clipped at the editor's edges.
   return createPortal(
-    <div className="absolute z-40" style={style}>
+    <div ref={ref} className="fixed z-40" style={{ top: 0, left: 0, visibility: "hidden" }}>
       <div className="animate-fade-in flex items-center gap-0.5 rounded-xl border border-fd-border bg-fd-popover p-1 shadow-lg">
         {BLOCKS.map((b) => (
           <button key={b.type} type="button" onMouseDown={keepFocus} onClick={() => { editor.setBlockTypeAtSelection(b.type); editorRef.current?.focus(); }} className={`rounded-md px-2 py-1 text-xs font-medium ${blockType === b.type ? "bg-fd-primary/15 text-fd-primary" : "text-fd-muted-foreground hover:bg-fd-accent"}`}>
@@ -278,6 +303,6 @@ export function SelectionMenu({ editor, editorRef }: { editor: EditorController;
         ))}
       </div>
     </div>,
-    overlay,
+    document.body,
   );
 }
