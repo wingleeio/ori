@@ -44,3 +44,43 @@ export function useCaretMenu(
   }, [open, editorRef, width, maxHeight]);
   return ref;
 }
+
+/**
+ * Position a selection toolbar centered above (or below, near the top) the
+ * selection. Like {@link useCaretMenu} it lives in a `<body>`-portaled fixed
+ * overlay so it floats above the editor without affecting its size, and a rAF
+ * loop keeps it glued. It is clamped to the viewport so it never gets clipped at
+ * an edge. Returns a ref to attach to the menu element.
+ */
+export function useSelectionToolbar(
+  editorRef: RefObject<NoteEditorHandle | null>,
+  open: boolean,
+): RefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const place = () => {
+      const el = ref.current;
+      const r = editorRef.current?.getSelectionRect();
+      if (el && r) {
+        const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        const above = r.top - (sc ? sc.top : 0) >= 44;
+        const w = el.offsetWidth || 0;
+        const cx = r.left + r.width / 2;
+        el.style.top = `${above ? r.top - 8 : r.bottom + 8}px`;
+        el.style.left = `${Math.max(8 + w / 2, Math.min(cx, window.innerWidth - 8 - w / 2))}px`;
+        el.style.transform = above ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+        el.style.visibility = "visible";
+      }
+    };
+    place();
+    const loop = () => {
+      place();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [open, editorRef]);
+  return ref;
+}
