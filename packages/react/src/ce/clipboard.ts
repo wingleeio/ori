@@ -1,13 +1,18 @@
-import type { InlineItem, Marks } from "@wingleeio/ori-core";
+import type { BlockType, InlineItem, Marks } from "@wingleeio/ori-core";
 
 /**
  * Clipboard (de)serialization for the contentEditable view. Copy writes three
  * payloads — `text/plain`, `text/html` (for other apps), and a private JSON MIME
- * that round-trips marks/atoms exactly — and paste prefers the private MIME, then
- * falls back to parsing external HTML, then plain text. Content is grouped one
- * array of inline runs per block so block boundaries survive a multi-block copy.
+ * that round-trips marks, atoms *and* block types exactly — and paste prefers the
+ * private MIME, then external HTML, then plain text. Content is grouped per block
+ * as `{ type, items }` so block boundaries and types survive a multi-block copy.
  */
 export const ORI_MIME = "application/x-ori-inline";
+
+export interface ClipBlock {
+  type: BlockType;
+  items: InlineItem[];
+}
 
 function atomPlain(it: InlineItem): string {
   const d = (it.atom?.data ?? {}) as Record<string, unknown>;
@@ -40,17 +45,25 @@ function runHtml(it: InlineItem): string {
   return html;
 }
 
+const BLOCK_TAG: Record<string, string> = { heading: "h2", quote: "blockquote", code: "pre" };
+
 /** Build the three clipboard payloads for a block-grouped selection. */
-export function serializeSelection(blocks: InlineItem[][]): { text: string; html: string; json: string } {
-  const text = blocks.map(blockPlain).join("\n");
-  const html = blocks.map((items) => `<p>${items.map(runHtml).join("") || "<br>"}</p>`).join("");
+export function serializeSelection(blocks: ClipBlock[]): { text: string; html: string; json: string } {
+  const text = blocks.map((b) => blockPlain(b.items)).join("\n");
+  const html = blocks
+    .map((b) => {
+      const tag = BLOCK_TAG[b.type] ?? "p";
+      return `<${tag}>${b.items.map(runHtml).join("") || "<br>"}</${tag}>`;
+    })
+    .join("");
   const json = JSON.stringify({
-    v: 1,
-    blocks: blocks.map((items) =>
-      items.map((it) =>
+    v: 2,
+    blocks: blocks.map((b) => ({
+      type: b.type,
+      items: b.items.map((it) =>
         it.atom ? { embed: it.atom.data ?? { type: it.atom.type } } : { text: it.text, marks: it.marks },
       ),
-    ),
+    })),
   });
   return { text, html, json };
 }
@@ -61,40 +74,58 @@ interface SerItem {
   embed?: Record<string, unknown>;
 }
 
-/** Parse our own clipboard JSON back into block-grouped inline items. */
-export function deserializeOri(json: string): InlineItem[][] | null {
+function toItems(items: SerItem[]): InlineItem[] {
+  return items.map((it) =>
+    it.embed
+      ? { text: "", start: 0, atom: { type: String(it.embed.type ?? ""), width: 0, data: it.embed } }
+      : { text: it.text ?? "", start: 0, marks: it.marks },
+  );
+}
+
+/** Parse our own clipboard JSON back into typed, block-grouped inline items. */
+export function deserializeOri(json: string): ClipBlock[] | null {
   try {
-    const data = JSON.parse(json) as { v?: number; blocks?: SerItem[][] };
+    const data = JSON.parse(json) as {
+      v?: number;
+      blocks?: Array<SerItem[] | { type?: BlockType; items?: SerItem[] }>;
+    };
     if (!Array.isArray(data.blocks)) return null;
-    return data.blocks.map((items) =>
-      items.map((it) =>
-        it.embed
-          ? { text: "", start: 0, atom: { type: String(it.embed.type ?? ""), width: 0, data: it.embed } }
-          : { text: it.text ?? "", start: 0, marks: it.marks },
-      ),
-    );
+    return data.blocks.map((b) => {
+      // v2: { type, items }; v1 (legacy): a bare array of items.
+      if (Array.isArray(b)) return { type: "paragraph" as BlockType, items: toItems(b) };
+      return { type: (b.type ?? "paragraph") as BlockType, items: toItems(b.items ?? []) };
+    });
   } catch {
     return null;
   }
 }
 
-/** Plain text → one block per line. */
-export function textToBlocks(text: string): InlineItem[][] {
+/** Plain text → one paragraph block per line. */
+export function textToBlocks(text: string): ClipBlock[] {
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => (line ? [{ text: line, start: 0 } as InlineItem] : []));
+    .map((line) => ({ type: "paragraph" as BlockType, items: line ? [{ text: line, start: 0 }] : [] }));
 }
 
-/** Parse external HTML into block-grouped inline items (best-effort marks). */
-export function htmlToBlocks(html: string): InlineItem[][] {
+function blockTypeForTag(tag: string): BlockType {
+  if (/^H[1-6]$/.test(tag)) return "heading";
+  if (tag === "BLOCKQUOTE") return "quote";
+  if (tag === "PRE") return "code";
+  return "paragraph";
+}
+
+/** Parse external HTML into typed, block-grouped inline items (best-effort). */
+export function htmlToBlocks(html: string): ClipBlock[] {
   if (typeof DOMParser === "undefined") return [];
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const blocks: InlineItem[][] = [];
+  const blocks: ClipBlock[] = [];
   let cur: InlineItem[] = [];
+  let curType: BlockType = "paragraph";
   const flush = () => {
-    blocks.push(cur);
+    blocks.push({ type: curType, items: cur });
     cur = [];
+    curType = "paragraph";
   };
   const push = (text: string, marks: Marks) => {
     if (!text) return;
@@ -126,14 +157,14 @@ export function htmlToBlocks(html: string): InlineItem[][] {
       if (href) m.link = href;
       const isBlock = BLOCK.has(tag);
       if (isBlock && cur.length) flush();
+      if (isBlock) curType = blockTypeForTag(tag);
       walk(el, m);
       if (isBlock) flush();
     }
   };
   walk(doc.body, {});
   if (cur.length) flush();
-  // Trim leading/trailing empty blocks left by formatting whitespace.
-  while (blocks.length && blocks[0].length === 0) blocks.shift();
-  while (blocks.length && blocks[blocks.length - 1].length === 0) blocks.pop();
+  while (blocks.length && blocks[0].items.length === 0) blocks.shift();
+  while (blocks.length && blocks[blocks.length - 1].items.length === 0) blocks.pop();
   return blocks;
 }
