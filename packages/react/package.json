@@ -1,6 +1,6 @@
 {
   "name": "@wingleeio/ori-react",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "React bindings for the Ori virtualized, local-first note editor.",
   "type": "module",
   "license": "MIT",
