@@ -96,6 +96,10 @@ export class EditorView {
 
   focus() {
     this.root.focus();
+    // Focusing an editable with no live range drops the caret to the start;
+    // restore the model selection so a programmatic focus() (e.g. after a menu
+    // command) can't strand the caret at the top of the block.
+    this.writeSelection();
   }
 
   // --- rendering ---------------------------------------------------------
@@ -366,9 +370,14 @@ export class EditorView {
 
     // Native fast path: collapsed in-block typing / deletion. The browser mutates
     // a single text node; onInput reads it back. Keeps autocorrect/IME native.
+    // It must NOT cover deletion of an adjacent inline atom — the browser won't
+    // remove a contentEditable=false node, so it would silently no-op and jolt
+    // the caret; route those through the controller instead.
+    const atomAt = (off: number) =>
+      this.editor.getInline(sel.focus.blockId).some((it) => it.atom != null && it.start === off);
     if (collapsed && (t === "insertText" || t === "insertCompositionText" || t === "insertReplacementText")) return;
-    if (collapsed && t === "deleteContentForward") return;
-    if (collapsed && t === "deleteContentBackward" && startOffset > 0) return;
+    if (collapsed && t === "deleteContentForward" && !atomAt(startOffset)) return;
+    if (collapsed && t === "deleteContentBackward" && startOffset > 0 && !atomAt(startOffset - 1)) return;
 
     // Everything else (structural + cross-block) is handled through the controller.
     const ed = this.editor;
