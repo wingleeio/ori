@@ -113,7 +113,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   useImperativeHandle(
     ref,
     (): NoteEditorHandle => ({
-      focus: () => contentRef.current?.focus(),
+      focus: () => (viewRef.current ? viewRef.current.focus() : contentRef.current?.focus()),
       getCaretRect: () => {
         const r = caretClientRect();
         return r ? { x: r.left, y: r.top, height: r.height || 16 } : null;
