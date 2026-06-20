@@ -96,10 +96,6 @@ export class EditorView {
 
   focus() {
     this.root.focus();
-    // Focusing an editable with no live range drops the caret to the start;
-    // restore the model selection so a programmatic focus() (e.g. after a menu
-    // command) can't strand the caret at the top of the block.
-    this.writeSelection();
   }
 
   // --- rendering ---------------------------------------------------------
@@ -116,21 +112,16 @@ export class EditorView {
   sync() {
     const rev = this.rev();
     if (rev === this.lastRevision) return;
-    const changed = this.renderBlocks();
-    // Restore the selection only when the re-render actually removed the live
-    // selection's nodes. Otherwise we'd clobber a selection the user just made
-    // (e.g. an async re-render landing mid drag-select) — collapsing it, so a
-    // following Backspace would move the caret instead of deleting the range.
-    if (changed && this.selectionDetached()) this.writeSelection();
+    const rendered = this.renderBlocks();
+    // Restore the DOM selection from the model only when the re-render actually
+    // re-rendered the *selection's own block* — its nodes were replaced, so the
+    // model is authoritative (e.g. an app command edited that block). When some
+    // other block re-rendered, the live selection is untouched and must be left
+    // alone, or we'd collapse a selection the user just made (then a Backspace
+    // would move the caret instead of deleting the range).
+    const sel = this.editor.getSelection();
+    if (sel && (rendered.has(sel.anchor.blockId) || rendered.has(sel.focus.blockId))) this.writeSelection();
     this.lastRevision = rev;
-  }
-
-  /** True when the current DOM selection's endpoints are no longer in the editor
-   *  (a re-render replaced their nodes), so it must be restored from the model. */
-  private selectionDetached(): boolean {
-    const s = window.getSelection();
-    if (!s || s.rangeCount === 0) return true;
-    return !this.root.contains(s.anchorNode) || !this.root.contains(s.focusNode);
   }
 
   /** After a controlled (preventDefault'd) edit: re-render + restore the caret. */
@@ -150,10 +141,10 @@ export class EditorView {
    * windowed blocks are rendered, and the off-screen height is represented as
    * padding on the editable (heights from the controller's offscreen measurement).
    * On-screen blocks are reused by id so a caret inside one survives a scroll.
-   * Returns true if the DOM was mutated.
+   * Returns the set of block ids whose *content* was (re-)rendered this pass.
    */
-  private renderBlocks(): boolean {
-    let changed = false;
+  private renderBlocks(): Set<string> {
+    const rendered = new Set<string>();
     const snap = this.editor.getSnapshot();
     const vis = snap.visible;
     const topH = vis.length ? vis[0].top : 0;
@@ -180,19 +171,14 @@ export class EditorView {
         have.delete(id);
       } else {
         el = this.makeBlock(id);
-        changed = true;
       }
       const anchor: ChildNode | null = prev ? prev.nextSibling : this.root.firstChild;
-      if (anchor !== el) {
-        this.root.insertBefore(el, anchor);
-        changed = true;
-      }
+      if (anchor !== el) this.root.insertBefore(el, anchor);
       prev = el;
     }
     for (const el of have.values()) {
       this.unmountRootsIn(el);
       el.remove();
-      changed = true;
     }
 
     for (const vb of vis) {
@@ -202,10 +188,10 @@ export class EditorView {
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
         this.renderBlockInner(el, vb.id);
-        changed = true;
+        rendered.add(vb.id);
       }
     }
-    return changed;
+    return rendered;
   }
 
   private makeBlock(id: string): HTMLElement {
