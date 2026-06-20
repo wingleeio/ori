@@ -159,6 +159,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
 
   // Position the custom caret from the live DOM selection.
   useEffect(() => {
+    let raf = 0;
     const update = () => {
       const content = contentRef.current;
       const s = window.getSelection();
@@ -170,13 +171,22 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
       const box = content.getBoundingClientRect();
       if (r) setCaret({ x: r.left - box.left, y: r.top - box.top, h: r.height || 18 });
     };
-    document.addEventListener("selectionchange", update);
+    // Measure now, then again after layout settles — an inline atom (mention)
+    // mounts its renderer asynchronously, so its width (and the caret position
+    // beside it) isn't known on the first measure.
+    const schedule = () => {
+      update();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => requestAnimationFrame(update));
+    };
+    document.addEventListener("selectionchange", schedule);
     const ro = new ResizeObserver(update);
     if (contentRef.current) ro.observe(contentRef.current);
-    update();
+    schedule();
     return () => {
-      document.removeEventListener("selectionchange", update);
+      document.removeEventListener("selectionchange", schedule);
       ro.disconnect();
+      cancelAnimationFrame(raf);
     };
   }, []);
 
