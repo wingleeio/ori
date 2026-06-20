@@ -116,12 +116,21 @@ export class EditorView {
   sync() {
     const rev = this.rev();
     if (rev === this.lastRevision) return;
-    // Only restore the DOM selection when the *content* changed (app command,
-    // undo, remote). A selection-only change is already correct in the DOM, and
-    // writing it back would fight (and collapse) the user's native selection.
     const changed = this.renderBlocks();
-    if (changed) this.writeSelection();
+    // Restore the selection only when the re-render actually removed the live
+    // selection's nodes. Otherwise we'd clobber a selection the user just made
+    // (e.g. an async re-render landing mid drag-select) — collapsing it, so a
+    // following Backspace would move the caret instead of deleting the range.
+    if (changed && this.selectionDetached()) this.writeSelection();
     this.lastRevision = rev;
+  }
+
+  /** True when the current DOM selection's endpoints are no longer in the editor
+   *  (a re-render replaced their nodes), so it must be restored from the model. */
+  private selectionDetached(): boolean {
+    const s = window.getSelection();
+    if (!s || s.rangeCount === 0) return true;
+    return !this.root.contains(s.anchorNode) || !this.root.contains(s.focusNode);
   }
 
   /** After a controlled (preventDefault'd) edit: re-render + restore the caret. */
@@ -375,8 +384,13 @@ export class EditorView {
     // the caret; route those through the controller instead.
     const atomAt = (off: number) =>
       this.editor.getInline(sel.focus.blockId).some((it) => it.atom != null && it.start === off);
+    const blockLen = this.editor.getBlockText(sel.focus.blockId).length;
     if (collapsed && (t === "insertText" || t === "insertCompositionText" || t === "insertReplacementText")) return;
-    if (collapsed && t === "deleteContentForward" && !atomAt(startOffset)) return;
+    // Forward delete is native only mid-block; at the block end it must merge the
+    // next block through the controller (a native cross-block merge corrupts the
+    // virtualized DOM). Backward delete is native only past offset 0 (offset 0
+    // merges the previous block). Neither may consume an adjacent inline atom.
+    if (collapsed && t === "deleteContentForward" && startOffset < blockLen && !atomAt(startOffset)) return;
     if (collapsed && t === "deleteContentBackward" && startOffset > 0 && !atomAt(startOffset - 1)) return;
 
     // Everything else (structural + cross-block) is handled through the controller.
