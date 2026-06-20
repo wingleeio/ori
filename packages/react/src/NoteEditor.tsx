@@ -56,6 +56,21 @@ export interface NoteEditorHandle {
   getOverlayElement(): HTMLElement | null;
 }
 
+/** The caret position nearest a viewport point (Chrome/Safari + Firefox). */
+function caretRangeFromPoint(x: number, y: number): Range | null {
+  const doc = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  if (doc.caretRangeFromPoint) return doc.caretRangeFromPoint(x, y);
+  const pos = doc.caretPositionFromPoint?.(x, y);
+  if (!pos) return null;
+  const r = document.createRange();
+  r.setStart(pos.offsetNode, pos.offset);
+  r.collapse(true);
+  return r;
+}
+
 function caretClientRect(): DOMRect | null {
   const s = window.getSelection();
   if (!s || s.rangeCount === 0) return null;
@@ -213,28 +228,51 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
 
   // Clicking the empty region below the content should focus the editor and put
   // the caret at the document end (the usual "click to keep writing" affordance).
+  // Clicking the editor's empty surface (the margins beside a line, or the space
+  // below the content) should place the caret at the nearest text position — like
+  // a real editor — instead of letting the browser drop it at the document start.
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (readOnly) return;
-    // Only act on the editor's own empty surface — not on blocks (the browser
-    // places the caret) and not on floating UI (menus) layered into the overlay.
+    // Only the editor's own surface; blocks/atoms/menus are handled natively.
     const t = e.target as HTMLElement;
     const onSurface =
       t === scrollerRef.current || t === overlayRef.current || t.classList.contains("ori-ce");
     if (!onSurface) return;
     const content = contentRef.current;
-    const blocks = content?.querySelectorAll("[data-block-id]");
-    const last = blocks && (blocks[blocks.length - 1] as HTMLElement | undefined);
-    if (!content || !last) return;
-    if (e.clientY <= last.getBoundingClientRect().bottom) return; // beside text, not below
+    const blocks = content ? ([...content.querySelectorAll("[data-block-id]")] as HTMLElement[]) : [];
+    if (!content || !blocks.length) return;
     e.preventDefault();
     content.focus();
+    // Pick the block nearest the click's Y (or the last block, when clicking below
+    // the content), then the line nearest the click within it, then place the
+    // caret at that line's start or end depending on which side was clicked —
+    // like a real editor, instead of dropping the caret at the document start.
+    const block =
+      blocks.find((b) => {
+        const r = b.getBoundingClientRect();
+        return e.clientY >= r.top && e.clientY <= r.bottom;
+      }) ?? (e.clientY < blocks[0].getBoundingClientRect().top ? blocks[0] : blocks[blocks.length - 1]);
+    // Fragment rects (a block's own getClientRects is just its box; a range over
+    // its contents yields one rect per inline run — multiple per visual line).
+    const lineRange = document.createRange();
+    lineRange.selectNodeContents(block);
+    const frags = [...lineRange.getClientRects()].filter((r) => r.width || r.height);
+    if (!frags.length) return;
+    // The fragment nearest the click's Y, then every fragment on that visual line.
+    const nearest = frags.reduce((a, b) =>
+      Math.abs((b.top + b.bottom) / 2 - e.clientY) < Math.abs((a.top + a.bottom) / 2 - e.clientY) ? b : a,
+    );
+    const midY = (nearest.top + nearest.bottom) / 2;
+    const onLine = frags.filter((r) => Math.abs((r.top + r.bottom) / 2 - midY) <= (nearest.bottom - nearest.top) / 2 + 1);
+    const lineLeft = Math.min(...onLine.map((r) => r.left));
+    const lineRight = Math.max(...onLine.map((r) => r.right));
+    const atEnd = e.clientX >= (lineLeft + lineRight) / 2;
+    const range = caretRangeFromPoint(atEnd ? lineRight - 1 : lineLeft + 1, midY);
     const sel = window.getSelection();
-    if (!sel) return;
-    const range = document.createRange();
-    range.selectNodeContents(last);
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (range && sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
   };
 
   const showCaret = focused && !!caret && !readOnly;
