@@ -5,9 +5,10 @@ import {
   createNoteDoc,
   getBlocks,
 } from "@wingleeio/ori-core";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { NoteEditor } from "../NoteEditor";
+import { domToModel } from "./dom";
 
 afterEach(cleanup);
 
@@ -172,6 +173,30 @@ describe("EditorView input routing (beforeinput)", () => {
     beforeinput(ce, "deleteContentForward");
     expect(editor.blockIds().length).toBe(1);
     expect(text(0)).toBe("onetwo");
+  });
+
+  it("places the caret after an inline atom inserted via a model command (mention)", () => {
+    const doc = createNoteDoc([{ text: "hi " }]);
+    const editor = new EditorController({
+      doc,
+      measurer: createMonospaceMeasurer(),
+      width: 400,
+      schema: { atoms: { mention: { type: "mention", measure: () => 20 } } },
+    });
+    const id = blockId(getBlocks(doc).get(0));
+    const { container } = render(<NoteEditor editor={editor} atomRenderers={{ mention: () => <span>@Z</span> }} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    act(() => {
+      // what a mention menu does: replace the trigger, insert the atom + a space.
+      editor.setSelection({ anchor: { blockId: id, offset: 3 }, focus: { blockId: id, offset: 3 } });
+      editor.insertInlineAtom({ type: "mention", label: "Z" });
+      editor.insertText(" ");
+    });
+    expect(editor.getBlockText(id).length).toBe(5); // "hi " + atom + " "
+    // The DOM caret must sit at the model end (5), not collapse to the block start.
+    const s = window.getSelection()!;
+    const mapped = domToModel(ce, s.focusNode, s.focusOffset);
+    expect(mapped).toEqual({ blockId: id, offset: 5 });
   });
 
   it("a content re-render in another block does not collapse a live selection (then Backspace still deletes it)", () => {
