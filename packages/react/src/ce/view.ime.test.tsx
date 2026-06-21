@@ -279,6 +279,61 @@ describe("type then Backspace (native paint -> controlled delete) re-renders the
   });
 });
 
+describe("emptying a non-paragraph block demotes it to a paragraph", () => {
+  it("deleting the last char of a heading (only block) demotes it to a paragraph", () => {
+    const { ce, editor, ids } = setup(["H"]);
+    act(() => editor.setBlockTypeAtSelection("heading"));
+    expect(editor.getBlockType(ids[0])).toBe("heading");
+    caretDom(ce, 0, 1);
+    beforeinputTarget(ce, "deleteContentBackward", null, targetRange(ce, 0, 0, 1));
+    expect(editor.getBlockText(ids[0])).toBe("");
+    expect(editor.getBlockType(ids[0])).toBe("paragraph");
+  });
+
+  it("selecting all of a heading and deleting demotes it to a paragraph", () => {
+    const { ce, editor, ids } = setup(["Title"]);
+    act(() => editor.setBlockTypeAtSelection("heading"));
+    selectDom(ce, 0, 0, 5);
+    beforeinput(ce, "deleteContentBackward");
+    expect(editor.getBlockText(ids[0])).toBe("");
+    expect(editor.getBlockType(ids[0])).toBe("paragraph");
+  });
+
+  it("a native backspace that empties a heading demotes it (onInput path)", () => {
+    const { ce, editor, ids } = setup(["H"]);
+    act(() => editor.setBlockTypeAtSelection("heading"));
+    const blockEl = ce.querySelector("[data-block-id]") as HTMLElement;
+    blockEl.textContent = ""; // browser natively removed the last char
+    const r = document.createRange();
+    r.setStart(blockEl, 0);
+    r.collapse(true);
+    const s = window.getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+    ce.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(editor.getBlockText(ids[0])).toBe("");
+    expect(editor.getBlockType(ids[0])).toBe("paragraph");
+  });
+
+  it("typing over a heading's selection keeps it a heading (not demoted)", () => {
+    const { ce, editor, ids } = setup(["Title"]);
+    act(() => editor.setBlockTypeAtSelection("heading"));
+    selectDom(ce, 0, 0, 5);
+    beforeinput(ce, "insertText", "X"); // replace, not a pure delete
+    expect(editor.getBlockText(ids[0])).toBe("X");
+    expect(editor.getBlockType(ids[0])).toBe("heading");
+  });
+
+  it("deleting only some of a heading's text keeps it a heading", () => {
+    const { ce, editor, ids } = setup(["Hi"]);
+    act(() => editor.setBlockTypeAtSelection("heading"));
+    caretDom(ce, 0, 2);
+    beforeinputTarget(ce, "deleteContentBackward", null, targetRange(ce, 0, 1, 2));
+    expect(editor.getBlockText(ids[0])).toBe("H");
+    expect(editor.getBlockType(ids[0])).toBe("heading");
+  });
+});
+
 describe("composition guard", () => {
   it("defers external re-renders during composition, then flushes on compositionend", () => {
     const { ce, editor, ids, text, blockEl } = setup(["abc", "xyz"]);

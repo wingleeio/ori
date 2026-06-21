@@ -968,6 +968,27 @@ export class EditorController {
     formatRange(this.doc, this.blocks, start, end, mark, active[mark] ? null : true);
   }
 
+  /**
+   * If the caret sits in an EMPTY, non-paragraph *text* block (heading, quote,
+   * code, …), reset it to a paragraph. The view calls this after a deletion so
+   * that clearing all of a heading's text drops the heading style instead of
+   * leaving an empty heading — especially when it's the only/first block and
+   * there's nothing to merge into. No-op for paragraphs, atomic/custom (non-text)
+   * blocks, or non-empty blocks. Returns whether it changed the type.
+   */
+  demoteEmptyBlock(): boolean {
+    const sel = this.selection;
+    if (!sel) return false;
+    const id = sel.focus.blockId;
+    const block = this.byId(id);
+    if (!block) return false;
+    if (blockType(block) === "paragraph") return false;
+    if (!this.nodeFor(id).text) return false; // atomic/custom node, not editable text
+    if (blockText(block).length !== 0) return false;
+    setBlockType(this.doc, this.blocks, id, "paragraph");
+    return true;
+  }
+
   setBlockTypeAtSelection(type: BlockType): void {
     const sel = this.selection;
     if (!sel) return;

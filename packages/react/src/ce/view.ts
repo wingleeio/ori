@@ -589,6 +589,8 @@ export class EditorView {
       e.preventDefault();
       if (t === "deleteContentForward") ed.deleteForward();
       else ed.deleteBackward();
+      // Clearing all of a heading/quote/code's text drops it back to a paragraph.
+      ed.demoteEmptyBlock();
     } else if (t === "insertText" || t === "insertReplacementText") {
       // Collapsed insertReplacementText, or ranged insert (autocorrect/spellcheck
       // replacement, typing over a selection): replace the target range with the
@@ -656,6 +658,12 @@ export class EditorView {
     // the typed character on screen even though the model dropped it.
     this.reindex(blockEl);
     blockEl.removeAttribute("data-sig");
+    // A native deletion that empties a heading/quote/code drops it to a paragraph.
+    // Re-render (the block's type — and CSS class — changed under the browser).
+    if (!insert && this.editor.demoteEmptyBlock()) {
+      this.commit();
+      return;
+    }
     this.lastRevision = this.rev();
   }
 
@@ -685,6 +693,7 @@ export class EditorView {
     e.clipboardData.setData(ORI_MIME, json);
     if (isCut && !this.opts.readOnly) {
       this.editor.deleteBackward();
+      this.editor.demoteEmptyBlock(); // cutting all of a heading's text -> paragraph
       this.commit();
     }
   }
