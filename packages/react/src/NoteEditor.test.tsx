@@ -9,6 +9,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { NoteEditor } from "./NoteEditor";
+import type { AtomRenderer } from "./renderers";
 import { useEditor } from "./useEditor";
 
 afterEach(cleanup);
@@ -83,6 +84,33 @@ describe("<NoteEditor> (contentEditable)", () => {
     );
     expect(await screen.findByTestId("divider")).toBeDefined();
     expect((await screen.findByTestId("chip")).textContent).toBe("@Ada");
+  });
+
+  it("keeps inline atoms rendered when the view is re-created (readOnly toggle / editor swap)", async () => {
+    const doc = createNoteDoc([{ text: "x" }]);
+    const editor = new EditorController({
+      doc,
+      measurer: createMonospaceMeasurer(),
+      width: 400,
+      schema: { atoms: { mention: { type: "mention", measure: () => 40 } } },
+    });
+    const id0 = blockId(getBlocks(doc).get(0));
+    editor.setSelection(at(id0, 1));
+    editor.insertInlineAtom({ type: "mention", label: "Ada" });
+    const atomRenderers: Record<string, AtomRenderer> = {
+      mention: ({ atom }) => <span data-testid="chip">@{(atom.data as { label: string }).label}</span>,
+    };
+    const { rerender } = render(<NoteEditor editor={editor} atomRenderers={atomRenderers} />);
+    expect((await screen.findByTestId("chip")).textContent).toBe("@Ada");
+    // Toggling readOnly recreates the EditorView on the *same* DOM element. The
+    // atom must re-render, not blank out from the previous view's torn-down root.
+    rerender(<NoteEditor editor={editor} readOnly atomRenderers={atomRenderers} />);
+    await act(async () => {
+      await Promise.resolve(); // flush the deferred unmount microtask
+    });
+    const chips = await screen.findAllByTestId("chip");
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent).toBe("@Ada");
   });
 
   it("virtualizes: renders a window of blocks with padding for the rest (no spacer elements)", () => {

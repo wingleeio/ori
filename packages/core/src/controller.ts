@@ -931,6 +931,12 @@ export class EditorController {
   // Inline marks & block types
   // ---------------------------------------------------------------------------
 
+  /** True when a mark has been staged for the next insertion at a collapsed
+   *  caret (a toggle with no selection) but not yet written into any text. */
+  hasPendingMarks(): boolean {
+    return this.pendingMarks != null;
+  }
+
   getActiveMarks(): Marks {
     const sel = this.selection;
     if (!sel) return {};

@@ -106,9 +106,15 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
   return createPortal(
     <div
       ref={menuRef}
+      data-ori-overlay
       className="fixed z-40"
       style={{ top: 0, left: 0, width: MENU_WIDTH, visibility: "hidden" }}
-      onMouseDown={(e) => e.preventDefault()}
+      // Mouse only: keep the editor focused/selected when clicking the menu. On
+      // touch we must NOT preventDefault — it both kills list scrolling and
+      // (via the synthesized event) suppresses the tap's click on iOS.
+      onPointerDown={(e) => {
+        if (e.pointerType === "mouse") e.preventDefault();
+      }}
     >
       {/* Animation on an inner element so it never overrides the parent's
           positioning transform (which caused the menu to jump on open). */}
@@ -121,8 +127,10 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
             <button
               key={c.id}
               type="button"
-              onMouseEnter={() => setIndex(i)}
-              onMouseDown={(e) => e.preventDefault()}
+              onPointerEnter={() => setIndex(i)}
+              // Apply on click (a clean tap, not a scroll-drag). apply() sets the
+              // selection itself and re-focuses, so it works even if the tap blurred
+              // the editor on touch — no pointer-down preventDefault needed here.
               onClick={() => apply(c)}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left",

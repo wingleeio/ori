@@ -1,7 +1,7 @@
 import { isCollapsed, type BlockType, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { ChevronDown } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
+import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +19,12 @@ export interface SelectionMenuProps {
   editorRef: RefObject<NoteEditorHandle | null>;
 }
 
-const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
+// Mouse only: keep the editor's selection alive when clicking a toolbar button.
+// On touch we must NOT preventDefault — the synthesized event would suppress the
+// tap's click on iOS (the selection is preserved anyway via [data-ori-overlay]).
+const keepFocus = (e: ReactPointerEvent) => {
+  if (e.pointerType === "mouse") e.preventDefault();
+};
 
 /**
  * A floating menu that appears over a non-empty selection: a block-type
@@ -39,7 +44,7 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
   // Float in a <body> portal, clamped to the viewport (rAF-positioned by the
   // hook) so the toolbar never gets clipped at the editor's edges.
   return createPortal(
-    <div ref={ref} className="fixed z-40" style={{ top: 0, left: 0, visibility: "hidden" }}>
+    <div ref={ref} data-ori-overlay className="fixed z-40" style={{ top: 0, left: 0, visibility: "hidden" }}>
       {/* Animation lives on an inner element so it can't clobber the
           positioning transform on the fixed parent (which caused jumpiness). */}
       <div className="flex animate-fade-in items-center gap-0.5 rounded-xl bg-popover p-1 shadow-lg ring-1 ring-border/60">
@@ -80,8 +85,13 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
               className={cn("size-7", active && "text-foreground")}
               aria-pressed={active}
               title={m.shortcut ? `${m.label} · ${m.shortcut}` : m.label}
-              onMouseDown={keepFocus}
-              onClick={() => editor.toggleMark(m.key)}
+              onPointerDown={keepFocus}
+              onClick={() => {
+                editor.toggleMark(m.key);
+                // On touch the tap blurred the editor (keepFocus is mouse-only);
+                // restore focus so the keyboard/caret return, like the other actions.
+                editorRef.current?.focus();
+              }}
             >
               <m.icon className="size-3.5" />
             </Button>

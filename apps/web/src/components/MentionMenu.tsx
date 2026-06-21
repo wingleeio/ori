@@ -105,9 +105,15 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
   return createPortal(
     <div
       ref={menuRef}
+      data-ori-overlay
       className="fixed z-40"
       style={{ top: 0, left: 0, width: MENU_WIDTH, visibility: "hidden" }}
-      onMouseDown={(e) => e.preventDefault()}
+      // Mouse only: keep the editor focused/selected when clicking the menu. On
+      // touch we must NOT preventDefault — it both kills list scrolling and
+      // (via the synthesized event) suppresses the tap's click on iOS.
+      onPointerDown={(e) => {
+        if (e.pointerType === "mouse") e.preventDefault();
+      }}
     >
       <div className="animate-fade-in overflow-hidden rounded-xl bg-popover p-1 shadow-xl ring-1 ring-border/60">
         <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
@@ -118,8 +124,10 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
             <button
               key={p.name}
               type="button"
-              onMouseEnter={() => setIndex(i)}
-              onMouseDown={(e) => e.preventDefault()}
+              onPointerEnter={() => setIndex(i)}
+              // Apply on click (a clean tap, not a scroll-drag). apply() sets the
+              // selection itself and re-focuses, so it works even if the tap blurred
+              // the editor on touch — no pointer-down preventDefault needed here.
               onClick={() => apply(p)}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left",
