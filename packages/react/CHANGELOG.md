@@ -1,5 +1,13 @@
 # @wingleeio/ori-react
 
+## 0.3.8
+
+### Patch Changes
+
+- abf2e40: Deleting all of a heading/quote/code block's text now drops it back to a paragraph, instead of leaving an empty heading you had to convert with `/`. This matters most when it's the only (or first) block in the document, where there's nothing to merge into. Typing over a heading's selection still keeps the heading. Adds `EditorController.demoteEmptyBlock()`, which the view calls after a deletion.
+- Updated dependencies [abf2e40]
+  - @wingleeio/ori-core@0.3.2
+
 ## 0.3.7
 
 ### Patch Changes
