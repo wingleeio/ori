@@ -228,6 +228,57 @@ describe("iOS autocorrect / IME (getTargetRanges)", () => {
   });
 });
 
+describe("type then Backspace (native paint -> controlled delete) re-renders the DOM", () => {
+  // The browser paints typed text natively; the Backspace's target range routes
+  // the delete through the controller. If the model returns to a previously
+  // rendered signature, the block must still re-render — otherwise the caret
+  // moves but the typed char stays on screen.
+  function nativeBackspaceTarget(tn: Text, from: number, to: number) {
+    return { startContainer: tn, startOffset: from, endContainer: tn, endOffset: to };
+  }
+  function backspace(ce: HTMLElement, tn: Text, from: number, to: number) {
+    const e = new InputEvent("beforeinput", { inputType: "deleteContentBackward", bubbles: true, cancelable: true });
+    Object.defineProperty(e, "getTargetRanges", { value: () => [nativeBackspaceTarget(tn, from, to)] });
+    ce.dispatchEvent(e);
+  }
+
+  it("typing into an empty block then Backspace clears it from the DOM (the @ / menu case)", () => {
+    const { ce, text, blockEl } = setup([""]);
+    // The browser inserts "@" into the empty block as a bare text node.
+    blockEl(0).textContent = "@";
+    const tn = blockEl(0).firstChild as Text;
+    const r = document.createRange();
+    r.setStart(tn, 1);
+    r.collapse(true);
+    const s = window.getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+    ce.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(text(0)).toBe("@");
+    backspace(ce, tn, 0, 1);
+    expect(text(0)).toBe(""); // model cleared
+    expect(blockEl(0).textContent).toBe(""); // DOM cleared too (bug left "@")
+  });
+
+  it("typing then Backspace that round-trips to a prior signature re-renders", () => {
+    const { ce, text, blockEl } = setup(["abc"]);
+    const span = blockEl(0).querySelector("[data-off]") as HTMLElement;
+    const tn = span.firstChild as Text;
+    tn.data = "abcd"; // browser extends the text node in place
+    const r = document.createRange();
+    r.setStart(tn, 4);
+    r.collapse(true);
+    const s = window.getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+    ce.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(text(0)).toBe("abcd");
+    backspace(ce, tn, 3, 4);
+    expect(text(0)).toBe("abc");
+    expect(blockEl(0).textContent).toBe("abc"); // DOM reflects the delete (bug left "abcd")
+  });
+});
+
 describe("composition guard", () => {
   it("defers external re-renders during composition, then flushes on compositionend", () => {
     const { ce, editor, ids, text, blockEl } = setup(["abc", "xyz"]);

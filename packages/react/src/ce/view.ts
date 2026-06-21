@@ -645,11 +645,17 @@ export class EditorView {
     this.editor.setSelection({ anchor: { blockId: id, offset: from }, focus: { blockId: id, offset: to } });
     if (to > from) this.editor.deleteBackward();
     if (insert) this.editor.insertText(insert);
-    // The browser already painted the text; just realign the run offsets. We do
-    // NOT stamp dataset.sig here: the native DOM has only the text, not our run
-    // wrappers/classes, so if the model added marks the block must stay eligible
-    // for a later renderBlocks() to paint them.
+    // The browser painted the text; realign the run offsets so live DOM positions
+    // stay correct. Then INVALIDATE the block's render signature (don't stamp the
+    // model's — the native DOM has only the text, not our run wrappers/marks, and
+    // sometimes a bare text node). This keeps the block eligible for the next
+    // renderBlocks() to paint marks AND, crucially, to re-render when a following
+    // controlled edit returns the block to a *previously rendered* signature —
+    // e.g. type "@"/"/" then Backspace puts the block back at its prior signature,
+    // and a stale (matching) signature would make renderBlocks skip it, leaving
+    // the typed character on screen even though the model dropped it.
     this.reindex(blockEl);
+    blockEl.removeAttribute("data-sig");
     this.lastRevision = this.rev();
   }
 
