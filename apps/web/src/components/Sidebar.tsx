@@ -1,5 +1,5 @@
 import { Moon, Plus, Sun, Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { NoteMeta } from "@/lib/storage";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,50 @@ export interface SidebarProps {
   onToggleTheme: () => void;
 }
 
+interface NoteRowProps {
+  note: NoteMeta;
+  active: boolean;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+/**
+ * A single note row. Memoized (with stable `onSelect`/`onDelete` from the host)
+ * so selecting a note only re-renders the two rows whose highlight changes, not
+ * all of them — keeping a large note list off the note-open critical path.
+ */
+const NoteRow = memo(function NoteRow({ note, active, onSelect, onDelete }: NoteRowProps) {
+  return (
+    <div
+      data-active={active ? "" : undefined}
+      className={cn(
+        "group flex items-center rounded-lg transition-colors",
+        active ? "bg-accent" : "hover:bg-accent/50",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(note.id)}
+        className="min-w-0 flex-1 overflow-hidden px-2.5 py-2 text-left"
+      >
+        <div className="truncate text-sm font-medium leading-tight">{note.title || "Untitled"}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {note.blocks ? `${note.blocks.toLocaleString()} blocks · ` : ""}
+          {relativeTime(note.updatedAt)}
+        </div>
+      </button>
+      <button
+        type="button"
+        aria-label="Delete note"
+        onClick={() => onDelete(note.id)}
+        className="mr-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 transition hover:bg-background hover:text-destructive group-hover:opacity-100"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
+  );
+});
+
 export function Sidebar({
   notes,
   activeId,
@@ -35,11 +79,13 @@ export function Sidebar({
   theme,
   onToggleTheme,
 }: SidebarProps) {
-  const activeRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   // Keep the selected note visible as it changes (click or ⌥↑/↓ navigation).
+  // Query the active row instead of holding a ref on it, so the rows stay
+  // memoized (a per-row ref would change identity and force a re-render).
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
+    listRef.current?.querySelector("[data-active]")?.scrollIntoView({ block: "nearest" });
   }, [activeId]);
 
   return (
@@ -57,45 +103,19 @@ export function Sidebar({
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {notes.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">No notes yet</p>
         ) : (
-          notes.map((note) => {
-            const active = note.id === activeId;
-            return (
-              <div
-                key={note.id}
-                ref={active ? activeRef : undefined}
-                className={cn(
-                  "group flex items-center rounded-lg transition-colors",
-                  active ? "bg-accent" : "hover:bg-accent/50",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(note.id)}
-                  className="min-w-0 flex-1 overflow-hidden px-2.5 py-2 text-left"
-                >
-                  <div className="truncate text-sm font-medium leading-tight">
-                    {note.title || "Untitled"}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {note.blocks ? `${note.blocks.toLocaleString()} blocks · ` : ""}
-                    {relativeTime(note.updatedAt)}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Delete note"
-                  onClick={() => onDelete(note.id)}
-                  className="mr-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 transition hover:bg-background hover:text-destructive group-hover:opacity-100"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            );
-          })
+          notes.map((note) => (
+            <NoteRow
+              key={note.id}
+              note={note}
+              active={note.id === activeId}
+              onSelect={onSelect}
+              onDelete={onDelete}
+            />
+          ))
         )}
       </div>
 

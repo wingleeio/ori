@@ -123,16 +123,17 @@ export function App() {
     setActiveId(id);
   }, []);
 
-  const deleteNote = useCallback(
-    (id: string) => {
-      removeDoc(id);
-      docCache.current.delete(id);
-      const remaining = notes.filter((n) => n.id !== id);
-      setNotes(remaining);
-      if (activeId === id) setActiveId(remaining[0]?.id ?? "");
-    },
-    [notes, activeId],
-  );
+  // Stable identity (reads live state via refs) so memoized note rows aren't
+  // invalidated on every selection — keeping the sidebar off the open path.
+  const deleteNote = useCallback((id: string) => {
+    removeDoc(id);
+    docCache.current.delete(id);
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    if (activeIdRef.current === id) {
+      const remaining = notesRef.current.filter((n) => n.id !== id);
+      setActiveId(remaining[0]?.id ?? "");
+    }
+  }, []);
 
   const activeMeta = notes.find((n) => n.id === activeId) ?? null;
   const activeDoc = activeMeta ? ensureDoc(activeMeta) : null;
