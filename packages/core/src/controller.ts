@@ -992,9 +992,19 @@ export class EditorController {
     return this.deleteSelectedRange();
   }
 
+  /**
+   * Ensure an insertion point lies in a text block. An atomic block's `Y.Text`
+   * isn't rendered, so text typed/pasted while the caret sits on one would vanish
+   * — instead, drop a fresh paragraph right after it and insert there.
+   */
+  private textInsertionPoint(pos: Position): Position {
+    if (this.nodeFor(pos.blockId).text) return pos;
+    return insertBlockAfter(this.doc, this.blocks, pos.blockId, "paragraph");
+  }
+
   insertText(text: string): void {
     if (text.length === 0) return;
-    const startPos = this.collapsedStart();
+    const startPos = this.textInsertionPoint(this.collapsedStart());
     const block = this.byId(startPos.blockId);
     const base = block ? marksInRange(blockText(block), startPos.offset, startPos.offset) : {};
     const effective = this.pendingMarks ?? base;
@@ -1043,7 +1053,7 @@ export class EditorController {
    */
   insertInline(items: InlineItem[]): void {
     for (const item of items) {
-      const startPos = this.collapsedStart();
+      const startPos = this.textInsertionPoint(this.collapsedStart());
       if (item.atom) {
         const embed = (item.atom.data as Record<string, unknown>) ?? { type: item.atom.type };
         this.setSelection(caret(insertInlineEmbed(this.doc, this.blocks, startPos, embed)));
@@ -1066,6 +1076,23 @@ export class EditorController {
       const next = this.virtualizer.getOrder()[this.indexOf(start.blockId) + 1];
       this.deleteBlock(start.blockId);
       start = position(next, 0);
+    }
+    // The whole multi-block selection reduced to a single atomic block: it spanned
+    // over that block, so remove it too (deleteRange would no-op on its empty,
+    // unrenderable Y.Text) and land the caret on an adjacent text position.
+    if (start.blockId === end.blockId && !this.nodeFor(start.blockId).text) {
+      const order = this.virtualizer.getOrder();
+      const idx = this.indexOf(start.blockId);
+      const prev = order[idx - 1];
+      const next = order[idx + 1];
+      if (!prev && !next) {
+        // It was the only block — leave an empty paragraph so the doc isn't empty.
+        const para = insertBlockAfter(this.doc, this.blocks, start.blockId, "paragraph");
+        this.deleteBlock(start.blockId);
+        return para;
+      }
+      this.deleteBlock(start.blockId);
+      return prev ? position(prev, this.lengthOf(prev)) : position(next, 0);
     }
     return deleteRange(this.doc, this.blocks, start, end);
   }

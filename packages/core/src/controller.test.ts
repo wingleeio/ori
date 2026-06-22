@@ -172,6 +172,23 @@ describe("EditorController", () => {
     expect(ed.getBlockText(b)).toBe("after"); // not hidden inside the divider
   });
 
+  it("typing never lands in an atomic block's hidden text", () => {
+    const doc = createNoteDoc([{ text: "para" }]);
+    const ed = new EditorController({
+      doc,
+      measurer: createMonospaceMeasurer(),
+      width: 300,
+      schema: { blocks: { divider: { type: "divider", text: false, measure: () => 33 } } },
+    });
+    const a = ed.blockIds()[0];
+    // Insert a divider (caret ends on it), then type: text goes to a new paragraph.
+    ed.setSelection(at(a, 4));
+    ed.insertBlockAfterSelection("divider");
+    ed.insertText("x");
+    const types = ed.blockIds().map((id) => `${ed.getBlockType(id)}:${ed.getBlockText(id)}`);
+    expect(types).toEqual(["paragraph:para", "divider:", "paragraph:x"]);
+  });
+
   it("re-measures a width-dependent atomic block on resize", () => {
     const doc = createNoteDoc();
     const ed = new EditorController({
