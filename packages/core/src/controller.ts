@@ -1064,17 +1064,30 @@ export class EditorController {
     const block = this.byId(startPos.blockId);
     if (!block) return;
     const len = blockText(block).length;
+    let atomicId: string;
     if (this.nodeFor(startPos.blockId).text && len === 0) {
+      // Reuse the empty paragraph as the atomic block.
       setBlockType(this.doc, this.blocks, startPos.blockId, type);
-      this.setSelection(caret(position(startPos.blockId, 0)));
-      if (attrs) this.setBlockAttrsAtSelection(attrs);
-      return;
+      atomicId = startPos.blockId;
+      if (attrs) {
+        this.setSelection(caret(position(atomicId, 0)));
+        this.setBlockAttrsAtSelection(attrs);
+      }
+    } else {
+      // Split a non-empty text block so the atomic block lands between the halves.
+      if (this.nodeFor(startPos.blockId).text && startPos.offset < len) {
+        splitBlock(this.doc, this.blocks, startPos.blockId, startPos.offset);
+      }
+      atomicId = insertBlockAfter(this.doc, this.blocks, startPos.blockId, type, attrs).blockId;
     }
-    if (this.nodeFor(startPos.blockId).text && startPos.offset < len) {
-      splitBlock(this.doc, this.blocks, startPos.blockId, startPos.offset);
+    // Always leave a text block after the atomic one (so the document never ends
+    // up as a single uneditable atomic block) and put the caret there.
+    const nextId = this.virtualizer.getOrder()[this.indexOf(atomicId) + 1];
+    if (nextId && this.nodeFor(nextId).text) {
+      this.setSelection(caret(position(nextId, 0)));
+    } else {
+      this.setSelection(caret(insertBlockAfter(this.doc, this.blocks, atomicId, "paragraph")));
     }
-    const after = insertBlockAfter(this.doc, this.blocks, startPos.blockId, type, attrs);
-    this.setSelection(caret(after));
   }
 
   /** Insert an inline atom (custom embed) at the current selection. */
@@ -1145,8 +1158,15 @@ export class EditorController {
     const pos = sel.focus;
     const order = this.virtualizer.getOrder();
     const idx = this.indexOf(pos.blockId);
-    // Caret on an atomic (non-text) block — Backspace removes the block itself.
-    if (idx >= 0 && !this.nodeFor(pos.blockId).text && order.length > 1) {
+    // Caret on an atomic (non-text) block — Backspace removes the block itself,
+    // or, if it's the only block, turns it back into an empty paragraph so the
+    // document never gets stuck as a single undeletable atomic block.
+    if (idx >= 0 && !this.nodeFor(pos.blockId).text) {
+      if (order.length === 1) {
+        setBlockType(this.doc, this.blocks, pos.blockId, "paragraph");
+        this.setSelection(caret(position(pos.blockId, 0)));
+        return;
+      }
       const prev = order[idx - 1];
       this.deleteBlock(pos.blockId);
       this.setSelection(
@@ -1187,8 +1207,14 @@ export class EditorController {
     const pos = sel.focus;
     const order = this.virtualizer.getOrder();
     const idx = this.indexOf(pos.blockId);
-    // Caret on an atomic block — Delete removes the block itself.
-    if (idx >= 0 && !this.nodeFor(pos.blockId).text && order.length > 1) {
+    // Caret on an atomic block — Delete removes the block itself, or turns a lone
+    // atomic block back into an empty paragraph (never a stuck single block).
+    if (idx >= 0 && !this.nodeFor(pos.blockId).text) {
+      if (order.length === 1) {
+        setBlockType(this.doc, this.blocks, pos.blockId, "paragraph");
+        this.setSelection(caret(position(pos.blockId, 0)));
+        return;
+      }
       const next = order[idx + 1];
       this.deleteBlock(pos.blockId);
       this.setSelection(

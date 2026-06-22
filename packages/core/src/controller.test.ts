@@ -189,6 +189,26 @@ describe("EditorController", () => {
     expect(ed.getBlockAttrs(imgId)).toEqual({ src: "x.png", ratio: 1.5 });
   });
 
+  it("never strands the document as a single uneditable atomic block", () => {
+    const schema = { blocks: { image: { type: "image", text: false, measure: () => 100 } } };
+    // Inserting an atomic block into an empty doc keeps a trailing paragraph.
+    let ed = new EditorController({ doc: createNoteDoc(), measurer: createMonospaceMeasurer(), width: 300, schema });
+    ed.insertAtomicBlockAtSelection("image", { src: "x" });
+    expect(ed.blockIds().map((id) => ed.getBlockType(id))).toEqual(["image", "paragraph"]);
+    // A lone atomic block (if one is reached) turns back into a paragraph on delete.
+    ed = new EditorController({
+      doc: createNoteDoc([{ type: "image", text: "" }]),
+      measurer: createMonospaceMeasurer(),
+      width: 300,
+      schema,
+    });
+    const only = ed.blockIds()[0];
+    ed.setSelection(at(only, 0));
+    ed.deleteBackward();
+    expect(ed.blockIds()).toHaveLength(1);
+    expect(ed.getBlockType(ed.blockIds()[0])).toBe("paragraph");
+  });
+
   it("typing never lands in an atomic block's hidden text", () => {
     const doc = createNoteDoc([{ text: "para" }]);
     const ed = new EditorController({
