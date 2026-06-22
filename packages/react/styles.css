@@ -114,12 +114,12 @@
 }
 .ori-ce .ori-block-code {
   font-family: var(--ori-mono, ui-monospace, SFMono-Regular, monospace);
-  /* Exact px (not em) so the DOM matches the layout engine, which rounds: the
-     code node measures at fontSize round(16*0.95)=15 and lineHeight
-     round(15*1.7)=26. A multi-line code block is tall, so even sub-pixel/line
-     drift would accumulate. Tied to the default 16px base typography. */
-  font-size: 15px;
-  line-height: 26px;
+  /* Matches the code node's typography exactly (nodes.ts: fontSize 0.95em,
+     lineHeight 1.7) now that the layout engine no longer rounds — so a tall
+     multi-line code block stays in lock-step with the DOM and scales with the
+     host's base font size. */
+  font-size: 0.95em;
+  line-height: 1.7;
   background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
   border-radius: 6px;
   /* 8px/12px padding mirrored by the code node's `inset` (px, not em, so the

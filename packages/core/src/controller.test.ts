@@ -340,9 +340,9 @@ describe("EditorController", () => {
       ed.setBlockTypeAtSelection("code");
       const layout = ed.getLayout(id)!;
       expect(layout.lineCount).toBe(1);
-      // One line at the code line-height (round(15 * 1.7) = 26) + 8px top + 8px
-      // bottom inset, matching the rendered CSS padding so virtualization agrees.
-      expect(layout.height).toBe(26 + 16);
+      // One line at the (unrounded) code line-height 16*0.95*1.7 = 25.84, plus
+      // 8px top + 8px bottom inset — matching the rendered CSS exactly.
+      expect(layout.height).toBeCloseTo(25.84 + 16, 5);
     });
 
     it("selectAll spans the whole document; collapse re-collapses it", () => {

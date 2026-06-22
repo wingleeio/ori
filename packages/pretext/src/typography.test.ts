@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_TYPOGRAPHY, lineHeightPx, resolveFont, typographyKey } from "./typography";
 
 describe("typography", () => {
-  it("lineHeightPx rounds fontSize * lineHeight", () => {
-    expect(lineHeightPx({ ...DEFAULT_TYPOGRAPHY, fontSize: 16, lineHeight: 1.7 })).toBe(27);
+  it("lineHeightPx is the exact (unrounded) fontSize * lineHeight", () => {
+    expect(lineHeightPx({ ...DEFAULT_TYPOGRAPHY, fontSize: 16, lineHeight: 1.7 })).toBeCloseTo(27.2, 5);
     expect(lineHeightPx({ ...DEFAULT_TYPOGRAPHY, fontSize: 20, lineHeight: 1.5 })).toBe(30);
   });
 

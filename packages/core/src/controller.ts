@@ -167,6 +167,9 @@ export class EditorController {
   private textIndex = new Map<Y.Text, string>();
 
   private viewport = { scrollTop: 0, viewportHeight: 0 };
+  /** Accumulated scroll compensation (px) from measurement; the host drains it
+   *  via {@link takeScrollAdjust} and adds it to scrollTop. */
+  private scrollAdjust = 0;
   private selection: Selection | null = null;
   private pendingMarks: Marks | null = null;
   private preferredX: number | null = null;
@@ -493,18 +496,19 @@ export class EditorController {
       }
       // Anything else nested in a block (its `attrs`, or a Y.Map / Y.Array /
       // Y.Text nested arbitrarily deep within) reports that inner type as the
-      // target; walk up the parent chain to the owning block (the Y.Map carrying
-      // an "id") so it re-measures/re-renders.
+      // target; walk up to the OWNING BLOCK — the Y.Map that is a direct child of
+      // the blocks array — so it re-measures/re-renders. (Keying on the first
+      // nested map with an "id" would stop at a nested entity's own id, not the
+      // block's.)
       let node: unknown = target;
-      let id: string | undefined;
       while (node instanceof Y.AbstractType) {
-        if (node instanceof Y.Map) {
-          id = node.get("id") as string | undefined;
-          if (id) break;
+        if (node.parent === this.blocks && node instanceof Y.Map) {
+          const id = node.get("id") as string | undefined;
+          if (id) changed.add(id);
+          break;
         }
         node = node.parent;
       }
-      if (id) changed.add(id);
     }
     if (structural) this.reindex();
     for (const id of changed) {
@@ -549,27 +553,52 @@ export class EditorController {
    */
   private measureViewport(): void {
     if (this.width <= 0 || this.virtualizer.count() === 0) return;
-    // Measuring a block changes its height, shifting which blocks the window
-    // covers — so iterate to a fixed point. This is monotonic (a measured block
-    // never reverts), so it converges; the loop is bounded by how many times the
-    // window can grow. The cap is generous so even a viewport full of blocks far
-    // shorter than the estimate (each pass reveals many more) still fully
-    // resolves rather than leaving visible tail blocks on an estimate.
-    for (let pass = 0; pass < 24; pass += 1) {
-      const win = this.virtualizer.window(
-        this.viewport.scrollTop,
-        this.viewport.viewportHeight,
-        this.overscan,
-      );
-      let measuredAny = false;
-      for (const it of win.items) {
-        if (!this.cache.isValid(it.id, this.versions.get(it.id) ?? 1, this.width, this.tKeyFor(it.id))) {
-          this.measure(it.id);
-          measuredAny = true;
+    this.withScrollAnchor(() => {
+      // Measuring a block changes its height, shifting which blocks the window
+      // covers — so iterate to a fixed point. This is monotonic (a measured
+      // block never reverts), so it converges; the loop is bounded by how many
+      // times the window can grow. The cap is generous so even a viewport full
+      // of blocks far shorter than the estimate (each pass reveals many more)
+      // still fully resolves rather than leaving visible tail blocks on an
+      // estimate.
+      for (let pass = 0; pass < 24; pass += 1) {
+        const win = this.virtualizer.window(
+          this.viewport.scrollTop,
+          this.viewport.viewportHeight,
+          this.overscan,
+        );
+        let measuredAny = false;
+        for (const it of win.items) {
+          if (!this.cache.isValid(it.id, this.versions.get(it.id) ?? 1, this.width, this.tKeyFor(it.id))) {
+            this.measure(it.id);
+            measuredAny = true;
+          }
         }
+        if (!measuredAny) break;
       }
-      if (!measuredAny) break;
-    }
+    });
+  }
+
+  /**
+   * Run a measurement batch while keeping the block at the viewport's top edge
+   * pinned: measuring blocks above it shifts its document-space top, so the net
+   * shift is accumulated into {@link scrollAdjust} for the host to add to its
+   * scrollTop. Model-based (not DOM-based), so it stays correct even when the
+   * anchor block isn't currently mounted.
+   */
+  private withScrollAnchor(fn: () => void): void {
+    const scrollTop = this.viewport.scrollTop;
+    const anchorId = scrollTop > 0 ? this.virtualizer.blockAt(scrollTop) : null;
+    const before = anchorId ? this.virtualizer.topOf(anchorId) : 0;
+    fn();
+    if (anchorId) this.scrollAdjust += this.virtualizer.topOf(anchorId) - before;
+  }
+
+  /** Drain the scroll compensation accumulated since the last call (px). */
+  takeScrollAdjust(): number {
+    const a = this.scrollAdjust;
+    this.scrollAdjust = 0;
+    return a;
   }
 
   /**
@@ -583,17 +612,20 @@ export class EditorController {
   measurePending(budget = 200): boolean {
     if (this.width <= 0) return false;
     let measured = 0;
-    for (const id of this.virtualizer.getOrder()) {
-      if (this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))) continue;
-      if (measured >= budget) {
-        if (measured > 0) this.notify();
-        return true;
+    let more = false;
+    this.withScrollAnchor(() => {
+      for (const id of this.virtualizer.getOrder()) {
+        if (this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))) continue;
+        if (measured >= budget) {
+          more = true;
+          return;
+        }
+        this.measure(id);
+        measured += 1;
       }
-      this.measure(id);
-      measured += 1;
-    }
+    });
     if (measured > 0) this.notify();
-    return false;
+    return more;
   }
 
   setTypography(typography: Typography): void {

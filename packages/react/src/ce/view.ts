@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AtomRenderer, BlockRenderer } from "../renderers";
 import { ORI_MIME, deserializeOri, htmlToBlocks, serializeSelection, textToBlocks, type ClipBlock } from "./clipboard";
-import { blockElOf, buildRun, domToModel, esc, modelToDom } from "./dom";
+import { BLOCK_SEL, blockElOf, buildRun, domToModel, esc, modelToDom } from "./dom";
 
 const PLACEHOLDER = "￼";
 
@@ -53,6 +53,10 @@ export class EditorView {
   /** The model revision the DOM currently reflects (so external changes — remote
    *  edits, app commands — re-render, but our own edits don't clobber the caret). */
   private lastRevision = -1;
+  /** True after Cmd+A: the *model* selection is the whole document (only the
+   *  rendered window can be highlighted in the DOM), so selectionchange must not
+   *  clobber it back to the visible range. Cleared when the user re-selects. */
+  private allSelected = false;
 
   constructor(
     private root: HTMLElement,
@@ -178,6 +182,12 @@ export class EditorView {
       if (this.applyingModel || this.composing) return;
       const sel = this.readSelection();
       if (!sel) return;
+      // After Cmd+A the model holds the whole-document selection; the DOM can
+      // only show the rendered window. Don't let the (smaller) DOM range clobber
+      // it — unless the user collapsed it (clicked / arrowed), which ends select-
+      // all and resumes normal DOM→model sync.
+      if (this.allSelected && !isCollapsed(sel)) return;
+      this.allSelected = false;
       this.editor.setSelection(sel);
       // DOM is already the source of truth here — record the revision so the
       // resulting React sync() doesn't write the selection back and collapse it.
@@ -265,12 +275,10 @@ export class EditorView {
     if (this.composing) return;
     const rev = this.rev();
     if (rev === this.lastRevision) return;
-    // Pin the topmost visible block before reconciling so a height change above
-    // it (e.g. lazy measurement resolving an estimated block) compensates the
-    // scroll instead of jumping the content the user is reading.
-    const anchor = this.captureAnchor();
     const rendered = this.renderBlocks();
-    if (anchor) this.restoreAnchor(anchor);
+    // Compensate the scroll for any height change above the viewport (lazy
+    // measurement resolving an estimate), so the content being read doesn't jump.
+    this.applyScrollAdjust();
     // Restore the DOM selection from the model only when the re-render actually
     // re-rendered the *selection's own block* — its nodes were replaced, so the
     // model is authoritative (e.g. an app command edited that block). When some
@@ -288,38 +296,17 @@ export class EditorView {
   }
 
   /**
-   * Record the topmost in-view block and its pixel offset from the scroller's
-   * top edge. Restoring it after a reconcile keeps the reading position fixed
-   * when block heights above it change (the crux of jank-free lazy measurement).
+   * Apply the controller's accumulated scroll compensation: measurement that
+   * changed block heights above the viewport shifts the content, and the
+   * controller reports the net shift (model-based, so it's correct even when the
+   * anchor block isn't mounted). Adding it to scrollTop keeps the reading
+   * position fixed. Re-firing onScroll converges (heights are now stable).
    */
-  private captureAnchor(): { id: string; offset: number } | null {
+  private applyScrollAdjust(): void {
+    const adj = this.editor.takeScrollAdjust();
+    if (!adj) return;
     const sc = this.scroller();
-    if (!sc) return null;
-    const scRect = sc.getBoundingClientRect();
-    for (const child of Array.from(this.root.children) as HTMLElement[]) {
-      const id = child.dataset.blockId;
-      if (!id) continue;
-      const r = child.getBoundingClientRect();
-      // The topmost block that actually intersects the viewport — not merely one
-      // below the top edge, which after a large upward jump could be a still-
-      // rendered overscan block *below* the viewport (pinning it would drift).
-      if (r.bottom > scRect.top + 1 && r.top < scRect.bottom) {
-        return { id, offset: r.top - scRect.top };
-      }
-    }
-    return null;
-  }
-
-  private restoreAnchor(anchor: { id: string; offset: number }): void {
-    const sc = this.scroller();
-    if (!sc) return;
-    const el = this.root.querySelector(`[data-block-id="${esc(anchor.id)}"]`) as HTMLElement | null;
-    if (!el) return;
-    const delta = el.getBoundingClientRect().top - sc.getBoundingClientRect().top - anchor.offset;
-    // Only correct a real shift; sub-pixel noise would otherwise fight the user's
-    // own scrolling. Adjusting scrollTop re-fires onScroll, which converges (the
-    // heights are now stable, so the next pass finds delta ≈ 0).
-    if (Math.abs(delta) >= 1) sc.scrollTop += delta;
+    if (sc) sc.scrollTop += adj;
   }
 
   /** After a controlled (preventDefault'd) edit: re-render + restore the caret. */
@@ -592,6 +579,38 @@ export class EditorView {
       e.preventDefault();
       this.editor.redo();
       this.commit();
+    } else if (k === "a") {
+      // Select-all must cover the whole document, not just the rendered window:
+      // the browser's native Cmd+A only selects mounted DOM, so a copy/cut would
+      // silently drop off-screen blocks. Set the model selection to the whole doc
+      // (copy/cut serialize from the model) and highlight the rendered range.
+      e.preventDefault();
+      this.editor.selectAll();
+      this.allSelected = true;
+      this.selectRenderedRangeInDom();
+      this.lastRevision = this.rev();
+    }
+  }
+
+  /** Visually select all currently-rendered blocks (feedback for select-all);
+   *  the authoritative whole-document selection lives in the model. */
+  private selectRenderedRangeInDom(): void {
+    const blocks = Array.from(this.root.querySelectorAll(BLOCK_SEL)) as HTMLElement[];
+    const s = window.getSelection();
+    if (!blocks.length || !s) return;
+    const first = blocks[0];
+    const last = blocks[blocks.length - 1];
+    const r = document.createRange();
+    this.applyingModel = true;
+    try {
+      r.setStart(first, 0);
+      r.setEnd(last, last.childNodes.length);
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch {
+      /* nodes detached mid-reconcile */
+    } finally {
+      this.applyingModel = false;
     }
   }
 
@@ -625,7 +644,14 @@ export class EditorView {
     // follows, is exactly what corrupts IME candidates / iOS predictive text.
     if (this.composing || t === "insertCompositionText") return;
 
-    const range = this.targetRange(e);
+    // An edit after Cmd+A acts on the whole document (the model selection), not
+    // the rendered window the DOM target range would report.
+    let range = this.targetRange(e);
+    if (this.allSelected) {
+      this.allSelected = false;
+      this.editor.selectAll();
+      range = this.editor.getSelection();
+    }
     if (!range) return;
     this.editor.setSelection(range);
     const collapsed = isCollapsed(range);

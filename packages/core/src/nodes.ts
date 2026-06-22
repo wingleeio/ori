@@ -79,7 +79,9 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
     spacing: 28,
     typography: (b) => ({
       ...b,
-      fontSize: Math.round(b.fontSize * 1.6),
+      // No rounding: the rendered CSS uses 1.6em / 1.3, so the model must use the
+      // exact fractional values to wrap and size identically.
+      fontSize: b.fontSize * 1.6,
       // Match the rendered CSS weight (.ori-block-heading: 600) so width
       // measurement — and thus wrapping/line count — agrees with the DOM.
       fontWeight: 600,
@@ -98,7 +100,8 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
     typography: (b) => ({
       ...b,
       fontFamily: b.monoFamily,
-      fontSize: Math.round(b.fontSize * 0.95),
+      // No rounding: matches the rendered CSS (0.95em / 1.7) exactly.
+      fontSize: b.fontSize * 0.95,
       lineHeight: 1.7,
     }),
   },

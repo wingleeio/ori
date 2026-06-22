@@ -28,9 +28,15 @@ export function typographyKey(t: Typography): string {
   ].join("");
 }
 
-/** The pixel line-height of a block, constant across inline marks. */
+/**
+ * The pixel line-height of a block, constant across inline marks. Not rounded:
+ * the rendered CSS uses a fractional unitless line-height (e.g. 1.7 → 27.2px at
+ * 16px), so rounding here would drift the model from the DOM and accumulate over
+ * a tall block. Keeping it exact (and scaling with `fontSize`) keeps measurement
+ * and the DOM in lock-step.
+ */
 export function lineHeightPx(t: Typography): number {
-  return Math.round(t.fontSize * t.lineHeight);
+  return t.fontSize * t.lineHeight;
 }
 
 /**
@@ -42,7 +48,7 @@ export function resolveFont(base: Typography, marks: Marks = {}): ResolvedFont {
   const italic = !!marks.italic;
   const weight = marks.bold ? 700 : base.fontWeight;
   const family = marks.code ? base.monoFamily : base.fontFamily;
-  const size = marks.code ? Math.round(base.fontSize * 0.92) : base.fontSize;
+  const size = marks.code ? base.fontSize * 0.92 : base.fontSize;
   const style = italic ? "italic " : "";
   return {
     css: `${style}${weight} ${size}px ${family}`,
