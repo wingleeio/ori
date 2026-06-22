@@ -989,8 +989,7 @@ export class EditorController {
   private collapsedStart(): Position {
     const sel = this.selection ?? caret(position(this.virtualizer.getOrder()[0] ?? "", 0));
     if (isCollapsed(sel)) return sel.focus;
-    const { start, end } = orderedRange(sel, this.indexOf);
-    return deleteRange(this.doc, this.blocks, start, end);
+    return this.deleteSelectedRange();
   }
 
   insertText(text: string): void {
@@ -1056,13 +1055,26 @@ export class EditorController {
     this.pendingMarks = null;
   }
 
+  /**
+   * Delete the (non-collapsed) selection. Leading atomic blocks are removed
+   * first so {@link deleteRange} starts on a text block — otherwise it would
+   * merge the range's tail into an atomic block's hidden Y.Text, hiding it.
+   */
+  private deleteSelectedRange(): Position {
+    let { start, end } = orderedRange(this.selection!, this.indexOf);
+    while (start.blockId !== end.blockId && !this.nodeFor(start.blockId).text) {
+      const next = this.virtualizer.getOrder()[this.indexOf(start.blockId) + 1];
+      this.deleteBlock(start.blockId);
+      start = position(next, 0);
+    }
+    return deleteRange(this.doc, this.blocks, start, end);
+  }
+
   deleteBackward(): void {
     const sel = this.selection;
     if (!sel) return;
     if (!isCollapsed(sel)) {
-      const { start, end } = orderedRange(sel, this.indexOf);
-      const after = deleteRange(this.doc, this.blocks, start, end);
-      this.setSelection(caret(after));
+      this.setSelection(caret(this.deleteSelectedRange()));
       return;
     }
     const pos = sel.focus;
@@ -1104,9 +1116,7 @@ export class EditorController {
     const sel = this.selection;
     if (!sel) return;
     if (!isCollapsed(sel)) {
-      const { start, end } = orderedRange(sel, this.indexOf);
-      const after = deleteRange(this.doc, this.blocks, start, end);
-      this.setSelection(caret(after));
+      this.setSelection(caret(this.deleteSelectedRange()));
       return;
     }
     const pos = sel.focus;

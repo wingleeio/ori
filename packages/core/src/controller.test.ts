@@ -161,6 +161,15 @@ describe("EditorController", () => {
     expect(ed.blockIds()).toEqual([a, b]);
     expect(ed.getBlockText(a)).toBe("before");
     expect(ed.getBlockText(b)).toBe("after");
+
+    // Range deletion starting on an atomic block must not merge the tail into it.
+    ed.setSelection(at(a, "before".length));
+    ed.insertBlockAfterSelection("divider"); // before | divider | after
+    const div2 = ed.blockIds()[1];
+    ed.setSelection({ anchor: { blockId: div2, offset: 0 }, focus: { blockId: b, offset: 0 } });
+    ed.deleteBackward();
+    expect(ed.blockIds()).not.toContain(div2);
+    expect(ed.getBlockText(b)).toBe("after"); // not hidden inside the divider
   });
 
   it("re-measures a width-dependent atomic block on resize", () => {
