@@ -8,7 +8,8 @@
 export interface VirtualItem {
   id: string;
   index: number;
-  /** Top edge of the block in document space (px). */
+  /** Top edge of the block's slot in document space (px). When spacing is the
+   * block's top margin, its content starts that many px below this edge. */
   top: number;
   /** Slot height including inter-block spacing (px). */
   height: number;

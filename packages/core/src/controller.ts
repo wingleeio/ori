@@ -84,7 +84,7 @@ export interface EditorOptions {
   width?: number;
   /** Extra pixels rendered above & below the viewport. */
   overscan?: number;
-  /** Vertical gap inserted below every block, in px. */
+  /** Vertical gap inserted above every block (except the first), in px. */
   blockSpacing?: number;
   /** Custom block/atom nodes, merged over the built-ins. */
   schema?: Partial<EditorSchema>;
@@ -94,10 +94,14 @@ export interface VisibleBlock {
   id: string;
   index: number;
   type: BlockType;
-  /** Top edge in document space (px). */
+  /** Top edge of the block's slot in document space (px); its content starts
+   * `spacing` px below this (the gap is the block's top margin). */
   top: number;
   /** Content height (px), excluding inter-block spacing. */
   height: number;
+  /** Spacing (px) reserved above this block — the gap from the previous one
+   * (0 for the first block). Rendered as the block's top margin. */
+  spacing: number;
 }
 
 export interface EditorSnapshot {
@@ -212,6 +216,7 @@ export class EditorController {
         type: block ? blockType(block) : "paragraph",
         top: it.top,
         height: this.contentHeights.get(it.id) ?? it.height,
+        spacing: this.spacingFor(it.id),
       };
     });
     const order = this.virtualizer.getOrder();
@@ -280,7 +285,15 @@ export class EditorController {
 
   private indexOf = (id: string): number => this.virtualizer.indexOf(id);
 
+  /**
+   * Spacing reserved *above* a block — rendered as its top margin, so a heading
+   * can claim a section break above itself while binding tightly to the body
+   * below. The first block has no gap above it (the scroller's own padding is
+   * the document's top inset), and suppressing it here also keeps the empty-doc
+   * placeholder aligned with the caret.
+   */
   private spacingFor(id: string): number {
+    if (this.virtualizer.getOrder()[0] === id) return 0;
     return this.nodeFor(id).spacing ?? this.blockSpacing;
   }
 
@@ -373,6 +386,12 @@ export class EditorController {
         !this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))
       ) {
         this.measure(id);
+      } else {
+        // Content is unchanged, but a reorder can flip a block's leading-gap
+        // suppression (it just became, or stopped being, the first block).
+        // Re-apply its slot height so the virtualizer stays exact; setHeight is
+        // a no-op when the value is unchanged, so this stays cheap.
+        this.virtualizer.setHeight(id, this.contentHeights.get(id)! + this.spacingFor(id));
       }
     }
 
@@ -515,13 +534,24 @@ export class EditorController {
     return this.virtualizer.topOf(id);
   }
 
+  /**
+   * Document-space y where a block's *content* starts. A block's slot is its
+   * spacing (the gap above it) plus its content height, so the content sits
+   * `spacingFor(id)` px below the slot top that {@link topOf} returns. Pretext
+   * geometry is block-relative, so callers must offset by this, not `topOf`.
+   */
+  private contentTopOf(id: string): number {
+    return this.virtualizer.topOf(id) + this.spacingFor(id);
+  }
+
   positionFromPoint(xContent: number, yDoc: number): Position | null {
     const id = this.virtualizer.blockAt(yDoc);
     if (!id) return null;
     const layout = this.getLayout(id);
     if (!layout) return null;
-    const top = this.virtualizer.topOf(id);
-    const offset = offsetAtPoint(layout, xContent, yDoc - top, this.measurer);
+    // A point in the block's top gap yields a negative local y; offsetAtPoint
+    // clamps it to the first line, placing the caret at the nearest content.
+    const offset = offsetAtPoint(layout, xContent, yDoc - this.contentTopOf(id), this.measurer);
     return position(id, offset);
   }
 
@@ -531,7 +561,7 @@ export class EditorController {
     const layout = this.getLayout(sel.focus.blockId);
     if (!layout) return null;
     const c = caretForOffset(layout, sel.focus.offset, this.measurer);
-    const top = this.virtualizer.topOf(sel.focus.blockId);
+    const top = this.contentTopOf(sel.focus.blockId);
     return { x: c.x, y: top + c.y, height: c.height, blockId: sel.focus.blockId };
   }
 
@@ -554,7 +584,7 @@ export class EditorController {
       if (!layout) continue;
       const from = it.id === start.blockId ? start.offset : 0;
       const to = it.id === end.blockId ? end.offset : layout.length;
-      const top = this.virtualizer.topOf(it.id);
+      const top = this.contentTopOf(it.id);
       for (const r of selectionRects(layout, from, to, this.measurer)) {
         out.push({ blockId: it.id, x: r.x, y: r.y + top, width: r.width, height: r.height });
       }

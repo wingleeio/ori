@@ -25,7 +25,8 @@ export interface BlockNode {
   text: boolean;
   /** Derive this node's typography from the base (text nodes only). */
   typography?: (base: Typography) => Typography;
-  /** Spacing in px below this block (defaults to the editor's blockSpacing). */
+  /** Spacing in px above this block — its top margin / section break
+   * (defaults to the editor's blockSpacing; the first block always gets 0). */
   spacing?: number;
   /** Height in px for an atomic block, as a function of width + attrs. */
   measure?: (ctx: BlockMeasureContext) => number;
@@ -56,7 +57,9 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
   heading: {
     type: "heading",
     text: true,
-    spacing: 18,
+    // A generous gap above (it binds tightly to the body below, whose own
+    // smaller spacing is the gap under the heading) reads as a section break.
+    spacing: 28,
     typography: (b) => ({
       ...b,
       fontSize: Math.round(b.fontSize * 1.6),

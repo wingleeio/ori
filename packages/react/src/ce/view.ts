@@ -301,8 +301,13 @@ export class EditorView {
     const snap = this.editor.getSnapshot();
     const vis = snap.visible;
     const topH = vis.length ? vis[0].top : 0;
+    // A block's slot is its spacing (top margin) + content height. The last
+    // visible block's content bottom sits at top + spacing + height, so the
+    // bottom spacer is the remaining height below that — anything else would
+    // double-count the gap the block already draws as its own top margin.
+    const last = vis[vis.length - 1];
     const botH = vis.length
-      ? Math.max(0, snap.totalHeight - (vis[vis.length - 1].top + vis[vis.length - 1].height))
+      ? Math.max(0, snap.totalHeight - (last.top + last.height + last.spacing))
       : Math.max(0, snap.totalHeight);
 
     // Virtual scroll height via padding on the editable — NOT spacer elements:
@@ -337,6 +342,14 @@ export class EditorView {
     for (const vb of vis) {
       const el = this.root.querySelector(`[data-block-id="${esc(vb.id)}"]`) as HTMLElement | null;
       if (!el) continue;
+      // Inter-block spacing is the block's top margin (the gap *above* it), so a
+      // heading owns its section break. It rides virtualization and matches the
+      // slot height the controller reserved (content + spacing) — the first
+      // block reports spacing 0, so there's no leading gap to collapse. Margin
+      // (not padding) keeps the block's own text flush with its top-left, which
+      // Pretext's caret/selection geometry assumes.
+      const gap = `${vb.spacing}px`;
+      if (el.style.marginTop !== gap) el.style.marginTop = gap;
       const sig = this.sig(vb.id);
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
@@ -369,7 +382,7 @@ export class EditorView {
       const host = document.createElement("div");
       el.appendChild(host);
       const root = createRoot(host);
-      root.render(blockRenderer({ editor: this.editor, block: { id, type, index: 0, top: 0, height: 0 }, layout: this.editor.getLayout(id)! }) as ReactNode);
+      root.render(blockRenderer({ editor: this.editor, block: { id, type, index: 0, top: 0, height: 0, spacing: 0 }, layout: this.editor.getLayout(id)! }) as ReactNode);
       this.roots.set(host, root);
       return;
     }

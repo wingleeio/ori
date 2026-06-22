@@ -243,15 +243,21 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     if (!content || !blocks.length) return;
     e.preventDefault();
     content.focus();
-    // Pick the block nearest the click's Y (or the last block, when clicking below
-    // the content), then the line nearest the click within it, then place the
-    // caret at that line's start or end depending on which side was clicked —
-    // like a real editor, instead of dropping the caret at the document start.
+    // Pick the block containing the click's Y, else the block vertically nearest
+    // to it, then the line nearest the click within it, then place the caret at
+    // that line's start or end depending on which side was clicked — like a real
+    // editor, instead of dropping the caret at the document start. "Nearest" (not
+    // "last") matters because a click can land in the inter-block spacing gap: the
+    // nearest block is the adjacent (on-screen) one, so caretRangeFromPoint below
+    // resolves — picking the last rendered block (off-screen in overscan) would
+    // not, leaving the native selection stranded on the contentEditable root.
+    const distToY = (b: HTMLElement) => {
+      const r = b.getBoundingClientRect();
+      return e.clientY < r.top ? r.top - e.clientY : e.clientY > r.bottom ? e.clientY - r.bottom : 0;
+    };
     const block =
-      blocks.find((b) => {
-        const r = b.getBoundingClientRect();
-        return e.clientY >= r.top && e.clientY <= r.bottom;
-      }) ?? (e.clientY < blocks[0].getBoundingClientRect().top ? blocks[0] : blocks[blocks.length - 1]);
+      blocks.find((b) => distToY(b) === 0) ??
+      blocks.reduce((best, b) => (distToY(b) < distToY(best) ? b : best));
     // Fragment rects (a block's own getClientRects is just its box; a range over
     // its contents yields one rect per inline run — multiple per visual line).
     const lineRange = document.createRange();
