@@ -172,6 +172,23 @@ describe("EditorController", () => {
     expect(ed.getBlockText(b)).toBe("after"); // not hidden inside the divider
   });
 
+  it("inserts an atomic block at the caret, splitting text and keeping attrs", () => {
+    const doc = createNoteDoc([{ text: "hello world" }]);
+    const ed = new EditorController({
+      doc,
+      measurer: createMonospaceMeasurer(),
+      width: 300,
+      schema: { blocks: { image: { type: "image", text: false, measure: () => 100 } } },
+    });
+    const a = ed.blockIds()[0];
+    ed.setSelection(at(a, 5)); // "hello| world"
+    ed.insertAtomicBlockAtSelection("image", { src: "x.png", ratio: 1.5 });
+    const types = ed.blockIds().map((id) => `${ed.getBlockType(id)}:${ed.getBlockText(id)}`);
+    expect(types).toEqual(["paragraph:hello", "image:", "paragraph: world"]);
+    const imgId = ed.blockIds()[1];
+    expect(ed.getBlockAttrs(imgId)).toEqual({ src: "x.png", ratio: 1.5 });
+  });
+
   it("typing never lands in an atomic block's hidden text", () => {
     const doc = createNoteDoc([{ text: "para" }]);
     const ed = new EditorController({

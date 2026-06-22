@@ -1032,6 +1032,13 @@ export class EditorView {
 
   private pasteBlocks(blocks: ClipBlock[]) {
     blocks.forEach((blk, i) => {
+      // An atomic block (image, divider…) carries no inline content, so it can't
+      // be merged into a text block — insert it as its own block (splitting the
+      // caret's text block if needed) so it's never dropped or hidden.
+      if (this.editor.isAtomicType(blk.type)) {
+        this.editor.insertAtomicBlockAtSelection(blk.type, blk.attrs);
+        return;
+      }
       if (i > 0) this.editor.insertParagraphBreak();
       // Adopt the pasted block type when we're filling a fresh block (a new block
       // from the break above, or an empty target) — so a pasted heading stays a
@@ -1039,14 +1046,7 @@ export class EditorView {
       const sel = this.editor.getSelection();
       const targetEmpty = sel ? this.editor.getBlockText(sel.focus.blockId).length === 0 : true;
       if (blk.items.length) this.editor.insertInline(blk.items);
-      if (i > 0 || targetEmpty) {
-        this.editor.setBlockTypeAtSelection(blk.type);
-        // Restore an atomic block's attrs (e.g. an image's src/ratio) so a pasted
-        // image isn't blank/default.
-        if (blk.attrs && Object.keys(blk.attrs).length) {
-          this.editor.setBlockAttrsAtSelection(blk.attrs);
-        }
-      }
+      if (i > 0 || targetEmpty) this.editor.setBlockTypeAtSelection(blk.type);
     });
   }
 }

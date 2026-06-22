@@ -1047,6 +1047,36 @@ export class EditorController {
     this.setSelection(caret(after));
   }
 
+  /** True for a schema block type whose content isn't editable text (atomic). */
+  isAtomicType(type: BlockType): boolean {
+    const node = this.schema.blocks[type];
+    return node ? !node.text : false;
+  }
+
+  /**
+   * Insert an atomic/custom block (image, divider…) at the caret as its own
+   * block. An empty text block simply becomes it; otherwise the text block is
+   * split at the caret so the atomic block lands between the two halves — never
+   * merging text into its hidden Y.Text. Used when pasting/dropping a block atom.
+   */
+  insertAtomicBlockAtSelection(type: BlockType, attrs?: Record<string, unknown>): void {
+    const startPos = this.collapsedStart();
+    const block = this.byId(startPos.blockId);
+    if (!block) return;
+    const len = blockText(block).length;
+    if (this.nodeFor(startPos.blockId).text && len === 0) {
+      setBlockType(this.doc, this.blocks, startPos.blockId, type);
+      this.setSelection(caret(position(startPos.blockId, 0)));
+      if (attrs) this.setBlockAttrsAtSelection(attrs);
+      return;
+    }
+    if (this.nodeFor(startPos.blockId).text && startPos.offset < len) {
+      splitBlock(this.doc, this.blocks, startPos.blockId, startPos.offset);
+    }
+    const after = insertBlockAfter(this.doc, this.blocks, startPos.blockId, type, attrs);
+    this.setSelection(caret(after));
+  }
+
   /** Insert an inline atom (custom embed) at the current selection. */
   insertInlineAtom(embed: Record<string, unknown>): void {
     const startPos = this.collapsedStart();
