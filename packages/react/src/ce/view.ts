@@ -674,6 +674,11 @@ export class EditorView {
     // with no data-off, desyncing the offset map. Route those through the
     // controller so each edit re-renders into proper run spans.
     const multiline = blockStr.includes("\n");
+    // Typing immediately beside an inline atom lands the browser at an element
+    // boundary, producing a bare text node with no data-off (reindex only tracks
+    // element children), which desyncs the atom's and following spans' offsets.
+    // Route those through the controller so the block re-renders into proper runs.
+    const nearAtom = (off: number) => atomAt(off) || atomAt(off - 1);
     // A collapsed replacement with no real (non-collapsed) target range ALWAYS
     // stays native: the browser auto-corrects the word in place and onInput reads
     // it back. Routing it through the controller would only insert (no range to
@@ -683,7 +688,14 @@ export class EditorView {
     // Collapsed typing stays native too — UNLESS a mark is staged at the caret
     // (Bold toggled with no selection), which the browser would type unstyled;
     // route that through the controller so the inserted text is painted bold.
-    if (collapsed && t === "insertText" && !this.editor.hasPendingMarks() && !multiline) return;
+    if (
+      collapsed &&
+      t === "insertText" &&
+      !this.editor.hasPendingMarks() &&
+      !multiline &&
+      !nearAtom(start.offset)
+    )
+      return;
     // Forward delete is native only mid-block; at the block end it must merge the
     // next block through the controller (a native cross-block merge corrupts the
     // virtualized DOM). Backward delete is native only past offset 0 (offset 0
