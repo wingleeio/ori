@@ -1,4 +1,4 @@
-import type { EditorController } from "@wingleeio/ori-core";
+import type { EditorController, VisibleBlock } from "@wingleeio/ori-core";
 import { isCollapsed } from "@wingleeio/ori-core";
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -353,7 +353,7 @@ export class EditorView {
       const sig = this.sig(vb.id);
       if (el.dataset.sig !== sig) {
         el.dataset.sig = sig;
-        this.renderBlockInner(el, vb.id);
+        this.renderBlockInner(el, vb);
         rendered.add(vb.id);
       }
     }
@@ -367,7 +367,8 @@ export class EditorView {
   }
 
 
-  private renderBlockInner(el: HTMLElement, id: string) {
+  private renderBlockInner(el: HTMLElement, vb: VisibleBlock) {
+    const id = vb.id;
     this.unmountRootsIn(el);
     const type = this.editor.getBlockType(id);
     el.className = `ori-block ori-block-${type}`;
@@ -376,17 +377,26 @@ export class EditorView {
     if (blockRenderer) {
       el.contentEditable = "false";
       el.textContent = "";
+      const layout = this.editor.getLayout(id)!;
+      // Pin the block to its measured height so the DOM matches the height the
+      // virtualizer reserved — a renderer that lays out to its container (e.g. a
+      // divider using h-full) then fills exactly that, with no scroll drift.
+      el.style.height = `${layout.height}px`;
       // Mount into a fresh child host, never the reused block element: a
       // deferred unmount of the previous root must not collide with createRoot
       // on the same container ("container already passed to createRoot").
       const host = document.createElement("div");
       el.appendChild(host);
       const root = createRoot(host);
-      root.render(blockRenderer({ editor: this.editor, block: { id, type, index: 0, top: 0, height: 0, spacing: 0 }, layout: this.editor.getLayout(id)! }) as ReactNode);
+      // Pass the block's real geometry (height especially): an atomic renderer
+      // like the image sizes itself from block.height, so a zeroed height would
+      // collapse it even though the virtualizer reserves the measured space.
+      root.render(blockRenderer({ editor: this.editor, block: vb, layout }) as ReactNode);
       this.roots.set(host, root);
       return;
     }
     el.contentEditable = "inherit";
+    el.style.height = "";
     el.textContent = "";
     const items = this.editor.getInline(id);
     if (items.length === 0) {
@@ -623,6 +633,22 @@ export class EditorView {
       // new line with a correctly-placed caret.
       e.preventDefault();
       ed.insertParagraphBreak();
+    } else if (t.startsWith("format")) {
+      // Native formatting (the browser/mobile B/I/U buttons, or OS shortcuts that
+      // surface as beforeinput rather than keydown) would otherwise mutate the DOM
+      // without touching the model, and the next render would drop the styling.
+      // Route the ones we model through the controller; ignore the rest.
+      const fmt = (
+        {
+          formatBold: "bold",
+          formatItalic: "italic",
+          formatUnderline: "underline",
+          formatStrikeThrough: "strike",
+        } as const
+      )[t];
+      e.preventDefault();
+      if (!fmt) return; // unmodeled (e.g. formatFontColor): drop it rather than desync
+      ed.toggleMark(fmt);
     } else {
       return; // let the browser handle anything we don't model
     }

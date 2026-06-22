@@ -96,4 +96,33 @@ describe("operations", () => {
     expect((blocks.get(1).get("attrs") as Y.Map<unknown>).get("ratio")).toBe(1.5);
     expect(after.blockId).toBe(blockId(blocks.get(1)));
   });
+
+  // Inline atoms (embeds) must survive structural ops, or e.g. splitting a block
+  // before a @mention would silently delete it.
+  const embeds = (b: Y.Map<unknown>) =>
+    (blockText(b).toDelta() as Array<{ insert: unknown }>).filter((o) => typeof o.insert !== "string");
+
+  it("splitBlock keeps an inline atom in the moved tail", () => {
+    const { doc, blocks, id } = setup(["ab"]);
+    insertInlineEmbed(doc, blocks, position(id(0), 1), { type: "mention", label: "Ada" });
+    // "a[mention]b" — split before the mention (offset 1) → tail "[mention]b".
+    splitBlock(doc, blocks, id(0), 1);
+    expect(embeds(blocks.get(1))).toEqual([{ insert: { type: "mention", label: "Ada" } }]);
+    expect(blockText(blocks.get(1)).length).toBe(2);
+  });
+
+  it("mergeWithPrevious keeps an inline atom from the merged block", () => {
+    const { doc, blocks, id } = setup(["a", "b"]);
+    insertInlineEmbed(doc, blocks, position(id(1), 0), { type: "mention", label: "Ada" });
+    mergeWithPrevious(doc, blocks, id(1));
+    expect(embeds(blocks.get(0))).toEqual([{ insert: { type: "mention", label: "Ada" } }]);
+  });
+
+  it("deleteRange across blocks keeps an atom in the retained tail", () => {
+    const { doc, blocks, id } = setup(["abc", "def"]);
+    insertInlineEmbed(doc, blocks, position(id(1), 2), { type: "mention", label: "Ada" });
+    // Delete from block0 offset1 to block1 offset1 → tail "ef" with the embed after.
+    deleteRange(doc, blocks, position(id(0), 1), position(id(1), 1));
+    expect(embeds(blocks.get(0))).toEqual([{ insert: { type: "mention", label: "Ada" } }]);
+  });
 });

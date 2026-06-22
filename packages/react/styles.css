@@ -112,6 +112,10 @@
 }
 .ori-ce .ori-block-code {
   font-family: var(--ori-mono, ui-monospace, SFMono-Regular, monospace);
+  /* Match the code node's typography (nodes.ts: fontSize 0.95, lineHeight 1.7)
+     so measured wrapping/height agrees with the DOM. */
+  font-size: 0.95em;
+  line-height: 1.7;
   background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
   border-radius: 6px;
   padding: 0.4em 0.6em;

@@ -63,7 +63,9 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
     typography: (b) => ({
       ...b,
       fontSize: Math.round(b.fontSize * 1.6),
-      fontWeight: 700,
+      // Match the rendered CSS weight (.ori-block-heading: 600) so width
+      // measurement — and thus wrapping/line count — agrees with the DOM.
+      fontWeight: 600,
       lineHeight: 1.3,
     }),
   },

@@ -25,6 +25,8 @@ describe("nodes / schema", () => {
   it("heading derives larger typography", () => {
     const t = DEFAULT_BLOCKS.heading.typography?.(DEFAULT_TYPOGRAPHY);
     expect(t!.fontSize).toBeGreaterThan(DEFAULT_TYPOGRAPHY.fontSize);
-    expect(t!.fontWeight).toBe(700);
+    // Matches the rendered CSS weight (.ori-block-heading: 600) so measurement
+    // agrees with the DOM.
+    expect(t!.fontWeight).toBe(600);
   });
 });

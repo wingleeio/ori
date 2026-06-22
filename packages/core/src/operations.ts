@@ -16,6 +16,10 @@ function sliceText(text: Y.Text, from: number, to: number): DeltaOp[] {
   let pos = 0;
   for (const op of full) {
     if (typeof op.insert !== "string") {
+      // An inline embed (atom, e.g. a mention) occupies exactly one position.
+      // Carry it over when it falls in range — otherwise split/merge/delete
+      // would silently drop atoms from the moved or retained tail.
+      if (pos >= from && pos < to) out.push({ insert: op.insert, attributes: op.attributes });
       pos += 1;
       continue;
     }
@@ -34,10 +38,17 @@ function sliceText(text: Y.Text, from: number, to: number): DeltaOp[] {
 function appendDelta(text: Y.Text, ops: DeltaOp[], at: number): number {
   let pos = at;
   for (const op of ops) {
-    if (typeof op.insert === "string" && op.insert.length > 0) {
-      // Explicit attributes so marks don't bleed across op boundaries.
-      text.insert(pos, op.insert, normalizeAttributes(op.attributes));
-      pos += op.insert.length;
+    if (typeof op.insert === "string") {
+      if (op.insert.length > 0) {
+        // Explicit attributes so marks don't bleed across op boundaries.
+        text.insert(pos, op.insert, normalizeAttributes(op.attributes));
+        pos += op.insert.length;
+      }
+    } else if (op.insert != null) {
+      // Re-insert an inline embed (atom) as a single-position embed so it
+      // survives being moved across a split/merge/delete.
+      text.insertEmbed(pos, op.insert, normalizeAttributes(op.attributes));
+      pos += 1;
     }
   }
   return pos;

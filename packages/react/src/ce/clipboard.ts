@@ -36,12 +36,17 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Escape for a double-quoted attribute value (also escape the quote itself). */
+function escAttr(s: string): string {
+  return esc(s).replace(/"/g, "&quot;");
+}
+
 function runHtml(it: InlineItem): string {
   if (it.atom) return `<span>${esc(atomPlain(it))}</span>`;
   let html = esc(it.text);
   const m = it.marks ?? {};
   for (const [k, tag] of MARK_TAGS) if (m[k]) html = `<${tag}>${html}</${tag}>`;
-  if (m.link) html = `<a href="${esc(m.link)}">${html}</a>`;
+  if (m.link) html = `<a href="${escAttr(m.link)}">${html}</a>`;
   return html;
 }
 

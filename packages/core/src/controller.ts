@@ -215,7 +215,10 @@ export class EditorController {
         index: it.index,
         type: block ? blockType(block) : "paragraph",
         top: it.top,
-        height: this.contentHeights.get(it.id) ?? it.height,
+        // Measured content height; if a block somehow isn't measured yet, fall
+        // back to the slot estimate minus its spacing so the view (which adds
+        // spacing back as the top margin) can't double-count the gap.
+        height: this.contentHeights.get(it.id) ?? Math.max(0, it.height - this.spacingFor(it.id)),
         spacing: this.spacingFor(it.id),
       };
     });
@@ -380,24 +383,17 @@ export class EditorController {
     this.virtualizer.setOrder(ids);
     this.cache.retain(live);
 
+    // Re-apply the slot height for blocks we've already measured so a reorder
+    // that flips a block's leading-gap suppression (spacing 0 ↔ blockSpacing)
+    // stays exact; setHeight is a no-op when unchanged. We do NOT measure here:
+    // unmeasured (and stale) blocks keep the virtualizer's estimate, and
+    // measureViewport() measures just the visible ones. This keeps a structural
+    // edit in a large note O(viewport) rather than re-measuring the whole doc.
     for (const id of ids) {
-      if (
-        !this.contentHeights.has(id) ||
-        !this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))
-      ) {
-        // Defer measurement until a real width is known. Measuring at width 0
-        // wraps every block to a single line and is discarded by the first
-        // setWidth() anyway — a wasted O(n) canvas pass on every note open.
-        // Until then the virtualizer's default height estimates the document.
-        if (this.width > 0) this.measure(id);
-      } else {
-        // Content is unchanged, but a reorder can flip a block's leading-gap
-        // suppression (it just became, or stopped being, the first block).
-        // Re-apply its slot height so the virtualizer stays exact; setHeight is
-        // a no-op when the value is unchanged, so this stays cheap.
-        this.virtualizer.setHeight(id, this.contentHeights.get(id)! + this.spacingFor(id));
-      }
+      const h = this.contentHeights.get(id);
+      if (h !== undefined) this.virtualizer.setHeight(id, h + this.spacingFor(id));
     }
+    this.measureViewport();
 
     for (const id of [...this.versions.keys()]) {
       if (!live.has(id)) {
