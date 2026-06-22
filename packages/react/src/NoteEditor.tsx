@@ -56,6 +56,8 @@ export interface NoteEditorHandle {
   getOverlayElement(): HTMLElement | null;
 }
 
+const noop = (): void => {};
+
 /** The caret position nearest a viewport point (Chrome/Safari + Firefox). */
 function caretRangeFromPoint(x: number, y: number): Range | null {
   const doc = document as Document & {
@@ -118,6 +120,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // (Re)starts the idle background-measurement loop; set by its effect below.
+  const restartBgRef = useRef<() => void>(noop);
   const [focused, setFocused] = useState(false);
   const [caret, setCaret] = useState<{ x: number; y: number; h: number } | null>(null);
 
@@ -171,9 +175,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   // Lazy measurement makes the first paint O(viewport) but leaves total height
   // an estimate. Finish measuring off-screen blocks from idle time so the
   // scrollbar and scroll-to-bottom become exact, without blocking open; the
-  // view's scroll-anchoring keeps content from jumping as heights resolve.
+  // view's scroll-anchoring keeps content from jumping as heights resolve. The
+  // loop is restartable so a resize (which re-invalidates offscreen heights at
+  // the new width) re-runs it — see the width/viewport sync below.
   useEffect(() => {
     let cancelled = false;
+    let handle: number | undefined;
     const w = window as typeof window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (h: number) => void;
@@ -183,13 +190,21 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
       : (cb: () => void) => window.setTimeout(cb, 16) as unknown as number;
     const cancel = w.cancelIdleCallback ?? ((h: number) => window.clearTimeout(h));
     const step = () => {
+      handle = undefined;
       if (cancelled) return;
       if (editor.measurePending(300)) handle = schedule(step);
     };
-    let handle = schedule(step);
+    const start = () => {
+      if (cancelled) return;
+      if (handle != null) cancel(handle);
+      handle = schedule(step);
+    };
+    restartBgRef.current = start;
+    start();
     return () => {
       cancelled = true;
-      cancel(handle);
+      restartBgRef.current = noop;
+      if (handle != null) cancel(handle);
     };
   }, [editor]);
 
@@ -236,8 +251,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     const content = contentRef.current;
     if (!sc || !content) return;
     const sync = () => {
+      const before = editor.getSnapshot().width;
       editor.setWidth(content.clientWidth);
       editor.setViewport(sc.scrollTop, sc.clientHeight);
+      // A width change invalidates every offscreen height; re-run the background
+      // pass so total height becomes exact again at the new width.
+      if (editor.getSnapshot().width !== before) restartBgRef.current();
     };
     sync();
     const ro = new ResizeObserver(sync);

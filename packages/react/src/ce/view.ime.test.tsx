@@ -632,15 +632,15 @@ describe("deletion / boundary edge cases", () => {
     expect(text(0)).toBe("abc");
   });
 
-  it("Enter inside a code block keeps the new block as code", () => {
-    const { ce, editor } = setup(["const x = 1"]);
+  it("Enter inside a code block adds a line to the same block (multi-line code)", () => {
+    const { ce, editor, text } = setup(["const x = 1"]);
     act(() => editor.setBlockTypeAtSelection("code"));
     caretDom(ce, 0, 11);
     beforeinput(ce, "insertParagraph");
-    const after = editor.blockIds();
-    expect(after.length).toBe(2);
-    expect(editor.getBlockType(after[0])).toBe("code");
-    expect(editor.getBlockType(after[1])).toBe("code");
+    // Stays one code block, with a newline appended — not split into two blocks.
+    expect(editor.blockIds().length).toBe(1);
+    expect(editor.getBlockType(editor.blockIds()[0])).toBe("code");
+    expect(text(0)).toBe("const x = 1\n");
   });
 
   it("selecting all then typing replaces every block with the new text", () => {

@@ -485,12 +485,15 @@ export class EditorController {
         const id = this.textIndex.get(target);
         if (id) changed.add(id);
       } else if (target instanceof Y.Map) {
-        // A change to a block's nested `attrs` map reports the attrs map as the
-        // target (no "id"); walk up to the owning block so atomic blocks
-        // re-measure/re-render when their attrs change.
-        let id = target.get("id") as string | undefined;
-        if (!id && target.parent instanceof Y.Map) {
-          id = (target.parent as Y.Map<unknown>).get("id") as string | undefined;
+        // A change to a block's nested map (its `attrs`, or anything nested
+        // deeper inside attrs) reports that inner map as the target; walk up the
+        // parent chain to the owning block so it re-measures/re-renders.
+        let node: unknown = target;
+        let id: string | undefined;
+        while (node instanceof Y.Map) {
+          id = node.get("id") as string | undefined;
+          if (id) break;
+          node = node.parent;
         }
         if (id) changed.add(id);
       }
@@ -613,14 +616,20 @@ export class EditorController {
     return this.virtualizer.topOf(id);
   }
 
+  /** The block's content inset (px), or zero. */
+  private insetOf(id: string): { top: number; right: number; bottom: number; left: number } {
+    return this.nodeFor(id).inset ?? { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+
   /**
    * Document-space y where a block's *content* starts. A block's slot is its
    * spacing (the gap above it) plus its content height, so the content sits
-   * `spacingFor(id)` px below the slot top that {@link topOf} returns. Pretext
-   * geometry is block-relative, so callers must offset by this, not `topOf`.
+   * `spacingFor(id)` px below the slot top that {@link topOf} returns; an inset
+   * block's padding pushes it `inset.top` further. Pretext geometry is
+   * block-relative, so callers must offset by this, not `topOf`.
    */
   private contentTopOf(id: string): number {
-    return this.virtualizer.topOf(id) + this.spacingFor(id);
+    return this.virtualizer.topOf(id) + this.spacingFor(id) + this.insetOf(id).top;
   }
 
   positionFromPoint(xContent: number, yDoc: number): Position | null {
@@ -630,7 +639,13 @@ export class EditorController {
     if (!layout) return null;
     // A point in the block's top gap yields a negative local y; offsetAtPoint
     // clamps it to the first line, placing the caret at the nearest content.
-    const offset = offsetAtPoint(layout, xContent, yDoc - this.contentTopOf(id), this.measurer);
+    // Both axes are shifted in by the inset (content starts at inset.left/.top).
+    const offset = offsetAtPoint(
+      layout,
+      xContent - this.insetOf(id).left,
+      yDoc - this.contentTopOf(id),
+      this.measurer,
+    );
     return position(id, offset);
   }
 
@@ -641,7 +656,8 @@ export class EditorController {
     if (!layout) return null;
     const c = caretForOffset(layout, sel.focus.offset, this.measurer);
     const top = this.contentTopOf(sel.focus.blockId);
-    return { x: c.x, y: top + c.y, height: c.height, blockId: sel.focus.blockId };
+    const left = this.insetOf(sel.focus.blockId).left;
+    return { x: c.x + left, y: top + c.y, height: c.height, blockId: sel.focus.blockId };
   }
 
   /** Selection rectangles for visible blocks only (document space). */
@@ -664,8 +680,9 @@ export class EditorController {
       const from = it.id === start.blockId ? start.offset : 0;
       const to = it.id === end.blockId ? end.offset : layout.length;
       const top = this.contentTopOf(it.id);
+      const left = this.insetOf(it.id).left;
       for (const r of selectionRects(layout, from, to, this.measurer)) {
-        out.push({ blockId: it.id, x: r.x, y: r.y + top, width: r.width, height: r.height });
+        out.push({ blockId: it.id, x: r.x + left, y: r.y + top, width: r.width, height: r.height });
       }
     }
     return out;
@@ -950,6 +967,18 @@ export class EditorController {
     const startPos = this.collapsedStart();
     const after = splitBlock(this.doc, this.blocks, startPos.blockId, startPos.offset);
     this.setSelection(caret(after));
+  }
+
+  /**
+   * Insert a soft line break — a newline *within* the block (the multi-line
+   * affordance for code blocks). The view renders the `\n` as a `<br>` plus a
+   * filler `<br>` for a trailing newline, so the caret lands on the new line.
+   * Replaces any selected range first.
+   */
+  insertSoftBreak(): void {
+    const sel = this.selection;
+    if (sel && !isCollapsed(sel)) this.deleteBackward();
+    this.insertText("\n");
   }
 
   /** Insert a new block (typically a custom atomic node) after the selection. */

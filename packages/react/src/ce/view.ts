@@ -295,12 +295,17 @@ export class EditorView {
   private captureAnchor(): { id: string; offset: number } | null {
     const sc = this.scroller();
     if (!sc) return null;
-    const scTop = sc.getBoundingClientRect().top;
+    const scRect = sc.getBoundingClientRect();
     for (const child of Array.from(this.root.children) as HTMLElement[]) {
       const id = child.dataset.blockId;
       if (!id) continue;
       const r = child.getBoundingClientRect();
-      if (r.bottom > scTop + 1) return { id, offset: r.top - scTop };
+      // The topmost block that actually intersects the viewport — not merely one
+      // below the top edge, which after a large upward jump could be a still-
+      // rendered overscan block *below* the viewport (pinning it would drift).
+      if (r.bottom > scRect.top + 1 && r.top < scRect.bottom) {
+        return { id, offset: r.top - scRect.top };
+      }
     }
     return null;
   }
@@ -488,6 +493,13 @@ export class EditorView {
         el.appendChild(buildRun(item));
       }
     }
+    // A block ending in a hard break needs a filler <br> after the break, or the
+    // browser puts no caret on the empty last line (the contentEditable
+    // trailing-<br> quirk). The filler carries no data-* so domBlockText and
+    // domToModel ignore it — it's purely so the caret can land on the new line.
+    if (this.editor.getBlockText(id).endsWith("\n")) {
+      el.appendChild(document.createElement("br"));
+    }
   }
 
   private makeBreak(off: number): HTMLElement {
@@ -629,7 +641,13 @@ export class EditorView {
     // the caret; route those through the controller instead.
     const atomAt = (off: number) =>
       this.editor.getInline(blockId).some((it) => it.atom != null && it.start === off);
-    const blockLen = this.editor.getBlockText(blockId).length;
+    const blockStr = this.editor.getBlockText(blockId);
+    const blockLen = blockStr.length;
+    // A block containing a hard break (multi-line code) is rendered with <br>s;
+    // native typing/deletion at a break boundary produces an unwrapped text node
+    // with no data-off, desyncing the offset map. Route those through the
+    // controller so each edit re-renders into proper run spans.
+    const multiline = blockStr.includes("\n");
     // A collapsed replacement with no real (non-collapsed) target range ALWAYS
     // stays native: the browser auto-corrects the word in place and onInput reads
     // it back. Routing it through the controller would only insert (no range to
@@ -639,18 +657,22 @@ export class EditorView {
     // Collapsed typing stays native too — UNLESS a mark is staged at the caret
     // (Bold toggled with no selection), which the browser would type unstyled;
     // route that through the controller so the inserted text is painted bold.
-    if (collapsed && t === "insertText" && !this.editor.hasPendingMarks()) return;
+    if (collapsed && t === "insertText" && !this.editor.hasPendingMarks() && !multiline) return;
     // Forward delete is native only mid-block; at the block end it must merge the
     // next block through the controller (a native cross-block merge corrupts the
     // virtualized DOM). Backward delete is native only past offset 0 (offset 0
-    // merges the previous block). Neither may consume an adjacent inline atom.
-    if (collapsed && t === "deleteContentForward" && start.offset < blockLen && !atomAt(start.offset)) return;
-    if (collapsed && t === "deleteContentBackward" && start.offset > 0 && !atomAt(start.offset - 1)) return;
+    // merges the previous block). Neither may consume an adjacent inline atom or
+    // edit a multi-line block (break boundaries break the offset map).
+    if (collapsed && t === "deleteContentForward" && start.offset < blockLen && !atomAt(start.offset) && !multiline) return;
+    if (collapsed && t === "deleteContentBackward" && start.offset > 0 && !atomAt(start.offset - 1) && !multiline) return;
 
     // Everything else (structural + cross-block) is handled through the controller.
     if (t === "insertParagraph") {
       e.preventDefault();
-      ed.insertParagraphBreak();
+      // Enter inside a code block adds a line to the block (real multi-line code)
+      // rather than splitting into a new block.
+      if (this.editor.getBlockType(blockId) === "code") ed.insertSoftBreak();
+      else ed.insertParagraphBreak();
     } else if (t === "historyUndo") {
       // Trackpad/menu undo (no keydown) would otherwise run the browser's native
       // contentEditable undo, which knows nothing about our model.
