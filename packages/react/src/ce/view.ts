@@ -67,6 +67,11 @@ export class EditorView {
     root.setAttribute("spellcheck", opts.readOnly ? "false" : "true");
     root.setAttribute("role", "textbox");
     root.setAttribute("aria-multiline", "true");
+    // A read-only (contenteditable=false) surface isn't focusable by default, so
+    // it would never receive the Cmd+A keydown — and the native fallback copies
+    // only the rendered window. Make it focusable so select-all/copy work whole.
+    if (opts.readOnly) root.tabIndex = 0;
+    else root.removeAttribute("tabindex");
     this.renderBlocks();
     this.lastRevision = this.rev();
     // If this view is replacing a previous one on the *same* focused element (a
@@ -870,6 +875,9 @@ export class EditorView {
 
   /** Copy/cut: put plain, HTML and a private (mark+type-preserving) payload on the clipboard. */
   private onClipboard(e: ClipboardEvent, isCut: boolean) {
+    // Defensive: after Cmd+A serialize the whole document even if a stray
+    // selectionchange clipped the model selection to the rendered window.
+    if (this.allSelected) this.editor.selectAll();
     const blocks = this.editor.getSelectionBlocks();
     if (!blocks.length || !e.clipboardData) return;
     e.preventDefault();
@@ -878,6 +886,7 @@ export class EditorView {
     e.clipboardData.setData("text/html", html);
     e.clipboardData.setData(ORI_MIME, json);
     if (isCut && !this.opts.readOnly) {
+      this.allSelected = false; // the whole-doc selection is now consumed
       this.editor.deleteBackward();
       this.editor.demoteEmptyBlock(); // cutting all of a heading's text -> paragraph
       this.commit();

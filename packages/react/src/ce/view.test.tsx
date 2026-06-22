@@ -154,6 +154,28 @@ describe("EditorView input routing (beforeinput)", () => {
     expect(runs[1].marks?.bold).toBeFalsy();
   });
 
+  it("Cmd+A selects the whole document (in the model), not just the rendered window", () => {
+    const { ce, editor, ids } = setup(["one", "two", "three"]);
+    ce.dispatchEvent(new KeyboardEvent("keydown", { key: "a", metaKey: true, bubbles: true, cancelable: true }));
+    const sel = editor.getSelection()!;
+    expect(sel.anchor.blockId).toBe(ids[0]);
+    expect(sel.anchor.offset).toBe(0);
+    expect(sel.focus.blockId).toBe(ids[2]);
+    expect(sel.focus.offset).toBe(editor.getBlockText(ids[2]).length);
+  });
+
+  it("Cmd+A works in a read-only editor (so it can be copied whole)", () => {
+    const editor = makeEditor(["one", "two"]);
+    const ids = getBlocks(editor.doc).map((b) => blockId(b));
+    const { container } = render(<NoteEditor editor={editor} readOnly />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    expect(ce.tabIndex).toBe(0); // focusable despite contenteditable=false
+    ce.dispatchEvent(new KeyboardEvent("keydown", { key: "a", metaKey: true, bubbles: true, cancelable: true }));
+    const sel = editor.getSelection()!;
+    expect(sel.focus.blockId).toBe(ids[1]);
+    expect(sel.focus.offset).toBe(editor.getBlockText(ids[1]).length);
+  });
+
   it("Cmd+Z undoes / Cmd+Shift+Z redoes the last edit", () => {
     const { ce, editor, ids } = setup(["abc"]);
     editor.setSelection({ anchor: { blockId: ids[0], offset: 3 }, focus: { blockId: ids[0], offset: 3 } });
