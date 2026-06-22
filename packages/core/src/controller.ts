@@ -481,22 +481,30 @@ export class EditorController {
       const target = e.target;
       if (target === this.blocks) {
         structural = true;
-      } else if (target instanceof Y.Text) {
+        continue;
+      }
+      // A block's own text has a fast path via the text→id index.
+      if (target instanceof Y.Text) {
         const id = this.textIndex.get(target);
-        if (id) changed.add(id);
-      } else if (target instanceof Y.Map) {
-        // A change to a block's nested map (its `attrs`, or anything nested
-        // deeper inside attrs) reports that inner map as the target; walk up the
-        // parent chain to the owning block so it re-measures/re-renders.
-        let node: unknown = target;
-        let id: string | undefined;
-        while (node instanceof Y.Map) {
+        if (id) {
+          changed.add(id);
+          continue;
+        }
+      }
+      // Anything else nested in a block (its `attrs`, or a Y.Map / Y.Array /
+      // Y.Text nested arbitrarily deep within) reports that inner type as the
+      // target; walk up the parent chain to the owning block (the Y.Map carrying
+      // an "id") so it re-measures/re-renders.
+      let node: unknown = target;
+      let id: string | undefined;
+      while (node instanceof Y.AbstractType) {
+        if (node instanceof Y.Map) {
           id = node.get("id") as string | undefined;
           if (id) break;
-          node = node.parent;
         }
-        if (id) changed.add(id);
+        node = node.parent;
       }
+      if (id) changed.add(id);
     }
     if (structural) this.reindex();
     for (const id of changed) {

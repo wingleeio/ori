@@ -114,10 +114,12 @@
 }
 .ori-ce .ori-block-code {
   font-family: var(--ori-mono, ui-monospace, SFMono-Regular, monospace);
-  /* Match the code node's typography (nodes.ts: fontSize 0.95, lineHeight 1.7)
-     so measured wrapping/height agrees with the DOM. */
-  font-size: 0.95em;
-  line-height: 1.7;
+  /* Exact px (not em) so the DOM matches the layout engine, which rounds: the
+     code node measures at fontSize round(16*0.95)=15 and lineHeight
+     round(15*1.7)=26. A multi-line code block is tall, so even sub-pixel/line
+     drift would accumulate. Tied to the default 16px base typography. */
+  font-size: 15px;
+  line-height: 26px;
   background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
   border-radius: 6px;
   /* 8px/12px padding mirrored by the code node's `inset` (px, not em, so the
@@ -134,6 +136,11 @@
 }
 
 .ori-frag-code {
+  /* The layout engine measures an inline code run in the mono family at 0.92em
+     (resolveFont), so it must render the same way — otherwise its glyph
+     advances (and the caret x within the line) disagree with Pretext. */
+  font-family: var(--ori-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.92em;
   background: var(--ori-code-bg, rgba(135, 131, 120, 0.16));
   border-radius: 4px;
   /* box-shadow (not padding) so glyph advances stay aligned with Pretext. */

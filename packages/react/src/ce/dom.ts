@@ -42,6 +42,18 @@ export function domToModel(
   if (!blockEl) return null;
   const blockId = blockEl.dataset.blockId as string;
 
+  // A caret can land directly on a <br> — a hard break, or the trailing filler
+  // <br> that makes the empty last line selectable. Neither carries data-off, so
+  // normalize it to a position in the block at the <br>'s child index, where the
+  // logic below resolves it against the surrounding run spans.
+  if (node instanceof HTMLElement && node.tagName === "BR") {
+    const idx = Array.prototype.indexOf.call(blockEl.childNodes, node);
+    if (idx >= 0) {
+      node = blockEl;
+      offset = idx + (offset > 0 ? 1 : 0);
+    }
+  }
+
   if (node && node.nodeType === Node.TEXT_NODE) {
     const span = spanOf(node);
     const base = span ? Number(span.dataset.off) : 0;
