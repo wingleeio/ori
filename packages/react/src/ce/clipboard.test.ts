@@ -50,6 +50,14 @@ describe("clipboard", () => {
     expect(blocks[1].items.find((r) => r.text === "there")?.marks?.bold).toBe(true);
   });
 
+  it("round-trips block attrs (e.g. an image's src/ratio)", () => {
+    const blocks: ClipBlock[] = [{ type: "image", items: [], attrs: { src: "x.png", ratio: 1.5 } }];
+    const { json } = serializeSelection(blocks);
+    const back = deserializeOri(json)!;
+    expect(back[0].type).toBe("image");
+    expect(back[0].attrs).toEqual({ src: "x.png", ratio: 1.5 });
+  });
+
   it("preserves whitespace and newlines inside <pre> (pasted code)", () => {
     const blocks = htmlToBlocks("<pre>  if (x) {\n    y();\n  }</pre>");
     expect(blocks).toHaveLength(1);

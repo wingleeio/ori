@@ -804,6 +804,12 @@ export class EditorController {
     return block ? blockType(block) : "paragraph";
   }
 
+  /** True for an atomic/custom block (divider, image…) — one whose content isn't
+   *  editable text. Hosts use it to keep native text input off such blocks. */
+  isAtomicBlock(id: string): boolean {
+    return !this.nodeFor(id).text;
+  }
+
   /** A block's pre-wrap inline runs + atoms (for contentEditable rendering). */
   getInline(id: string): InlineItem[] {
     const block = this.byId(id);
@@ -816,21 +822,23 @@ export class EditorController {
    * Used to put styled content on the clipboard so marks *and* block types survive
    * copy/paste. Empty if nothing is selected.
    */
-  getSelectionBlocks(): { type: BlockType; items: InlineItem[] }[] {
+  getSelectionBlocks(): { type: BlockType; items: InlineItem[]; attrs: Record<string, unknown> }[] {
     const sel = this.selection;
     if (!sel || isCollapsed(sel)) return [];
     const { start, end } = orderedRange(sel, this.indexOf);
     const order = this.virtualizer.getOrder();
     const si = this.indexOf(start.blockId);
     const ei = this.indexOf(end.blockId);
-    const out: { type: BlockType; items: InlineItem[] }[] = [];
+    const out: { type: BlockType; items: InlineItem[]; attrs: Record<string, unknown> }[] = [];
     for (let i = si; i <= ei; i += 1) {
       const id = order[i];
       const items = this.getInline(id);
       const len = blockText(this.byId(id)!).length;
       const from = i === si ? start.offset : 0;
       const to = i === ei ? end.offset : len;
-      out.push({ type: this.getBlockType(id), items: clipInline(items, from, to) });
+      // Carry block attrs (e.g. an image's src/ratio) so atomic blocks survive
+      // copy/paste — otherwise a pasted image would reset to defaults.
+      out.push({ type: this.getBlockType(id), items: clipInline(items, from, to), attrs: blockAttrs(this.byId(id)!) });
     }
     return out;
   }
@@ -1277,5 +1285,18 @@ export class EditorController {
     if (!sel) return null;
     const block = this.byId(sel.focus.blockId);
     return block ? blockType(block) : null;
+  }
+
+  /** Merge attrs onto the block at the caret — restores a pasted atomic block's
+   *  attrs (e.g. an image's src/ratio) so it doesn't reset to defaults. */
+  setBlockAttrsAtSelection(attrs: Record<string, unknown>): void {
+    const id = this.selection?.focus.blockId;
+    const block = id ? this.byId(id) : undefined;
+    if (!block) return;
+    const attrMap = block.get("attrs");
+    if (!(attrMap instanceof Y.Map)) return;
+    this.doc.transact(() => {
+      for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
+    });
   }
 }

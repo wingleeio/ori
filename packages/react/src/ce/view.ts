@@ -722,8 +722,10 @@ export class EditorView {
     // An atomic/custom block (divider, image) is contentEditable=false and has no
     // editable text node, so the browser can't type into it. Route through the
     // controller, which redirects the insertion into a real paragraph instead of
-    // the block's hidden Y.Text.
-    const atomicBlock = !!this.opts.renderBlock(this.editor.getBlockType(blockId));
+    // the block's hidden Y.Text. Use the schema (matches the controller) rather
+    // than whether a renderer is registered, so a renderer-less atomic node is
+    // still treated as atomic.
+    const atomicBlock = this.editor.isAtomicBlock(blockId);
     // A collapsed replacement with no real (non-collapsed) target range ALWAYS
     // stays native: the browser auto-corrects the word in place and onInput reads
     // it back. Routing it through the controller would only insert (no range to
@@ -1037,7 +1039,14 @@ export class EditorView {
       const sel = this.editor.getSelection();
       const targetEmpty = sel ? this.editor.getBlockText(sel.focus.blockId).length === 0 : true;
       if (blk.items.length) this.editor.insertInline(blk.items);
-      if (i > 0 || targetEmpty) this.editor.setBlockTypeAtSelection(blk.type);
+      if (i > 0 || targetEmpty) {
+        this.editor.setBlockTypeAtSelection(blk.type);
+        // Restore an atomic block's attrs (e.g. an image's src/ratio) so a pasted
+        // image isn't blank/default.
+        if (blk.attrs && Object.keys(blk.attrs).length) {
+          this.editor.setBlockAttrsAtSelection(blk.attrs);
+        }
+      }
     });
   }
 }

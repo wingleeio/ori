@@ -12,6 +12,8 @@ export const ORI_MIME = "application/x-ori-inline";
 export interface ClipBlock {
   type: BlockType;
   items: InlineItem[];
+  /** Block attrs (e.g. an image's src/ratio) so atomic blocks round-trip. */
+  attrs?: Record<string, unknown>;
 }
 
 function atomPlain(it: InlineItem): string {
@@ -65,6 +67,7 @@ export function serializeSelection(blocks: ClipBlock[]): { text: string; html: s
     v: 2,
     blocks: blocks.map((b) => ({
       type: b.type,
+      ...(b.attrs && Object.keys(b.attrs).length ? { attrs: b.attrs } : {}),
       items: b.items.map((it) =>
         it.atom ? { embed: it.atom.data ?? { type: it.atom.type } } : { text: it.text, marks: it.marks },
       ),
@@ -92,13 +95,19 @@ export function deserializeOri(json: string): ClipBlock[] | null {
   try {
     const data = JSON.parse(json) as {
       v?: number;
-      blocks?: Array<SerItem[] | { type?: BlockType; items?: SerItem[] }>;
+      blocks?: Array<
+        SerItem[] | { type?: BlockType; items?: SerItem[]; attrs?: Record<string, unknown> }
+      >;
     };
     if (!Array.isArray(data.blocks)) return null;
     return data.blocks.map((b) => {
-      // v2: { type, items }; v1 (legacy): a bare array of items.
+      // v2: { type, items, attrs? }; v1 (legacy): a bare array of items.
       if (Array.isArray(b)) return { type: "paragraph" as BlockType, items: toItems(b) };
-      return { type: (b.type ?? "paragraph") as BlockType, items: toItems(b.items ?? []) };
+      return {
+        type: (b.type ?? "paragraph") as BlockType,
+        items: toItems(b.items ?? []),
+        ...(b.attrs ? { attrs: b.attrs } : {}),
+      };
     });
   } catch {
     return null;
