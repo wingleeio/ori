@@ -286,7 +286,15 @@ export class EditorView {
 
   /** A content signature for a block, so unchanged blocks aren't re-rendered. */
   private sig(id: string): string {
-    return this.editor.getBlockType(id) + "|" + JSON.stringify(this.editor.getInline(id));
+    const type = this.editor.getBlockType(id);
+    let s = type + "|" + JSON.stringify(this.editor.getInline(id));
+    if (this.opts.renderBlock(type)) {
+      // Atomic blocks carry no inline text, so a resize (height change) or an
+      // attrs edit wouldn't change the signature and the block would be skipped.
+      // Fold its measured height + attrs in so those re-render and re-pin height.
+      s += "|" + (this.editor.getLayout(id)?.height ?? 0) + "|" + JSON.stringify(this.editor.getBlockAttrs(id));
+    }
+    return s;
   }
 
   /**
@@ -384,8 +392,11 @@ export class EditorView {
       el.style.height = `${layout.height}px`;
       // Mount into a fresh child host, never the reused block element: a
       // deferred unmount of the previous root must not collide with createRoot
-      // on the same container ("container already passed to createRoot").
+      // on the same container ("container already passed to createRoot"). The
+      // host fills the pinned block so a renderer using height:100% (e.g. a
+      // vertically-centered divider) resolves against the reserved height.
       const host = document.createElement("div");
+      host.style.height = "100%";
       el.appendChild(host);
       const root = createRoot(host);
       // Pass the block's real geometry (height especially): an atomic renderer

@@ -161,7 +161,8 @@ export function activeMarks(text: Y.Text, from: number, to: number): Marks {
   return common ?? {};
 }
 
-function intersectMarks(a: Marks, b: Marks): Marks {
+/** Marks common to both sets — a mark is kept only if present (and equal) in each. */
+export function intersectMarks(a: Marks, b: Marks): Marks {
   const out: Marks = {};
   if (a.bold && b.bold) out.bold = true;
   if (a.italic && b.italic) out.italic = true;

@@ -73,6 +73,20 @@ describe("EditorController", () => {
     expect(ed.getActiveMarks().bold).toBe(true);
   });
 
+  it("getActiveMarks / toggleMark consider the whole multi-block selection", () => {
+    const { ed, doc } = make(["hello", "world"]);
+    const id0 = blockId(getBlocks(doc).get(0));
+    const id1 = blockId(getBlocks(doc).get(1));
+    // Bold only the first block, then select across both.
+    ed.setSelection({ anchor: { blockId: id0, offset: 0 }, focus: { blockId: id0, offset: 5 } });
+    ed.toggleMark("bold");
+    ed.setSelection({ anchor: { blockId: id0, offset: 0 }, focus: { blockId: id1, offset: 5 } });
+    // Mixed: not bold everywhere → not "active", so a toggle must APPLY (not remove).
+    expect(ed.getActiveMarks().bold).toBeFalsy();
+    ed.toggleMark("bold");
+    expect(ed.getActiveMarks().bold).toBe(true); // now bold across the whole range
+  });
+
   it("getSelectedText returns the selected substring", () => {
     const { ed, firstId } = make(["hello world"]);
     ed.setSelection({ anchor: { blockId: firstId, offset: 0 }, focus: { blockId: firstId, offset: 5 } });

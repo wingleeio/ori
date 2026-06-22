@@ -20,6 +20,7 @@ import { LayoutCache } from "./cache";
 import {
   activeMarks as marksInRange,
   fullAttributes,
+  intersectMarks,
   sliceTextPlain,
   textToInline,
   textToPlain,
@@ -474,7 +475,13 @@ export class EditorController {
         const id = this.textIndex.get(target);
         if (id) changed.add(id);
       } else if (target instanceof Y.Map) {
-        const id = target.get("id") as string | undefined;
+        // A change to a block's nested `attrs` map reports the attrs map as the
+        // target (no "id"); walk up to the owning block so atomic blocks
+        // re-measure/re-render when their attrs change.
+        let id = target.get("id") as string | undefined;
+        if (!id && target.parent instanceof Y.Map) {
+          id = (target.parent as Y.Map<unknown>).get("id") as string | undefined;
+        }
         if (id) changed.add(id);
       }
     }
@@ -522,9 +529,12 @@ export class EditorController {
   private measureViewport(): void {
     if (this.width <= 0 || this.virtualizer.count() === 0) return;
     // Measuring a block changes its height, shifting which blocks the window
-    // covers — so iterate to a fixed point. Estimates are close to real heights,
-    // so this converges in 1–2 passes; the cap is just a safety bound.
-    for (let pass = 0; pass < 4; pass += 1) {
+    // covers — so iterate to a fixed point. This is monotonic (a measured block
+    // never reverts), so it converges; the loop is bounded by how many times the
+    // window can grow. The cap is generous so even a viewport full of blocks far
+    // shorter than the estimate (each pass reveals many more) still fully
+    // resolves rather than leaving visible tail blocks on an estimate.
+    for (let pass = 0; pass < 24; pass += 1) {
       const win = this.virtualizer.window(
         this.viewport.scrollTop,
         this.viewport.viewportHeight,
@@ -1010,11 +1020,25 @@ export class EditorController {
       const block = this.byId(sel.focus.blockId);
       return block ? marksInRange(blockText(block), sel.focus.offset, sel.focus.offset) : {};
     }
+    // A mark is "active" only if EVERY character in the selection carries it —
+    // so toggling a mixed-mark range applies it (rather than removing it, which
+    // checking only the first block would wrongly do). Intersect across blocks.
     const { start, end } = orderedRange(sel, this.indexOf);
-    const block = this.byId(start.blockId);
-    if (!block) return {};
-    const to = end.blockId === start.blockId ? end.offset : blockText(block).length;
-    return marksInRange(blockText(block), start.offset, to);
+    const order = this.virtualizer.getOrder();
+    const startIdx = this.indexOf(start.blockId);
+    const endIdx = this.indexOf(end.blockId);
+    let common: Marks | null = null;
+    for (let i = startIdx; i <= endIdx; i += 1) {
+      const block = this.byId(order[i]);
+      if (!block) continue;
+      const text = blockText(block);
+      const from = i === startIdx ? start.offset : 0;
+      const to = i === endIdx ? end.offset : text.length;
+      if (to <= from) continue; // empty sub-range (e.g. selection ends at offset 0)
+      const m = marksInRange(text, from, to);
+      common = common === null ? m : intersectMarks(common, m);
+    }
+    return common ?? {};
   }
 
   toggleMark(mark: "bold" | "italic" | "code" | "underline" | "strike"): void {
