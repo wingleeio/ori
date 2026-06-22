@@ -679,9 +679,10 @@ export class EditorView {
       if (text) ed.insertInline([{ text, start: 0, marks }]);
     } else if (t === "insertLineBreak") {
       // Shift+Enter. A soft break ("\n" in a block) is unreliable in
-      // contentEditable (the browser types before/after a trailing <br>
-      // inconsistently), so in this block model it starts a new block — a clean
-      // new line with a correctly-placed caret.
+      // contentEditable: the caret after a trailing <br> lands before it, so the
+      // next characters type onto the wrong line. In this block model Shift+Enter
+      // starts a new block instead — a clean new line with a correct caret (the
+      // same choice Notion-style block editors make).
       e.preventDefault();
       ed.insertParagraphBreak();
     } else if (t.startsWith("format")) {
