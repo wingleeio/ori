@@ -1,6 +1,6 @@
 {
   "name": "@wingleeio/ori-pretext",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Agnostic text layout & measurement engine: line-breaking, caret geometry, hit-testing and selection rects with no DOM, React or Yjs dependency.",
   "type": "module",
   "license": "MIT",

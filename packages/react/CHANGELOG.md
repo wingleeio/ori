@@ -1,5 +1,116 @@
 # @wingleeio/ori-react
 
+## 0.3.9
+
+### Patch Changes
+
+- 21d950e: Fifth-pass review fixes:
+
+  - **Select-all data loss**: Cmd+A now sets the whole-document model selection
+    (copy/cut serialize from the model), so copying a virtualized document no
+    longer drops off-screen blocks. An edit after select-all replaces the whole
+    document; clicking/arrowing ends it.
+  - **Robust scroll anchoring**: replaced DOM-based anchoring with model-based
+    scroll compensation in the controller (it reports how far the block at the
+    viewport top shifted during measurement), so it stays correct even when the
+    anchor block isn't mounted.
+  - Deep attrs invalidation finds the owning block (the direct child of the blocks
+    array), not a nested entity's own `id`.
+  - Exact typography: the layout engine no longer rounds line metrics, so the
+    model matches the fractional CSS (`1.7em`, `0.95em`, etc.) exactly and scales
+    with the host's base font size — no per-line drift in tall blocks.
+
+- 2199417: Fourth-pass review fixes:
+
+  - Deep attrs invalidation walks the full Yjs parent chain through any type
+    (Y.Map / Y.Array / Y.Text nested in `attrs`) to the owning block.
+  - Code block renders at exact px metrics (15px / 26px) matching the layout
+    engine's rounding, so a tall multi-line code block doesn't accumulate
+    sub-pixel height drift. Inline code renders in the mono family at 0.92em — it
+    was measured as mono but rendered in the body font, so glyph advances
+    disagreed with the layout.
+  - `domToModel` handles a caret landing directly on a `<br>` (a hard break or the
+    trailing filler), mapping it to the right block offset instead of 0.
+
+- dd74cb0: Geometry parity and exact virtualized scrolling:
+
+  - Block nodes can declare a content `inset` (px) matching their rendered CSS
+    padding/border; the layout engine subtracts the horizontal inset from the wrap
+    width and adds the vertical inset to the height. Code and quote blocks use it,
+    so their wrapping and virtualized height now match the DOM exactly (previously
+    their padding/border drifted from the layout model).
+  - Scroll-anchoring: when a block's height changes above the viewport (e.g. lazy
+    measurement resolving an estimate), the view compensates the scroll so the
+    content you're reading doesn't jump.
+  - Background measurement: off-screen block heights finish measuring from idle
+    time after the first paint, so total height — and thus the scrollbar and
+    scroll-to-bottom — become exact without slowing the open.
+
+- 3b0de0f: Fix correctness bugs found in an adversarial review:
+
+  - **Data loss**: inline atoms (e.g. @mentions) were silently dropped when a
+    block was split, merged, or partially deleted with the atom in the moved or
+    retained tail. Structural ops now carry embeds through.
+  - Lazy measurement now also covers `reindex`, so a structural edit in a large
+    note no longer re-measures the whole document (it stayed O(viewport) only on
+    initial open before).
+  - Custom/atomic block renderers now receive the block's real geometry and the
+    block is pinned to its measured height, so images render at full size and
+    dividers match their reserved space instead of collapsing.
+  - Native formatting commands (the browser/mobile B/I/U buttons, surfacing as
+    `beforeinput` `formatBold`/etc.) are routed through the model instead of
+    silently mutating the DOM and being lost on the next render.
+  - Heading weight and code font-size/line-height in the rendered CSS now match
+    the typography the layout engine measures with, so wrapping and height agree.
+  - Clipboard HTML escapes link hrefs as attributes (quotes included).
+
+- f537d85: Third-pass review fixes:
+
+  - **Multi-line code blocks**: Enter inside a code block now adds a line to the
+    same block (rendered via `<br>` + a filler `<br>` so the caret lands on the new
+    line) instead of splitting into a new block. Editing a block that contains a
+    newline is routed through the controller so the run/offset map stays correct.
+  - Background measurement restarts after a resize, so total height becomes exact
+    again at the new width (it previously only ran once per note).
+  - Block `inset` is reflected in the public geometry APIs (`caretRect`,
+    `positionFromPoint`, `selectionRectsForViewport`), so a host using core
+    geometry gets correct coordinates for code/quote blocks.
+  - Scroll-anchoring only pins a block that actually intersects the viewport, so a
+    large upward jump can't anchor a stale off-screen block.
+  - Attrs invalidation walks the full parent chain, so a change to a map nested
+    inside a block's `attrs` still re-measures/re-renders the block.
+
+- 75d2cc9: Second round of adversarial-review fixes:
+
+  - Atomic/custom blocks re-render when their measured height (e.g. an image on
+    resize) or attrs change, and re-measure when a nested attrs map is edited.
+  - The renderer host fills the block's pinned height so height:100% renderers
+    (e.g. a centered divider) lay out correctly.
+  - `getActiveMarks`/`toggleMark` consider the whole multi-block selection, so
+    toggling a mark over a mixed-mark range applies it instead of removing it.
+  - Lazy viewport measurement converges robustly (no visible tail left on an
+    estimate in pathological docs).
+  - Pasting external HTML preserves whitespace and newlines inside `<pre>`, so
+    copied code keeps its indentation.
+
+- 92f8e5b: Restore inter-block spacing in the editor. Blocks now render the spacing the
+  layout model reserves (previously the contentEditable view stacked them with no
+  gap), and a block's `spacing` is the gap _above_ it — so headings claim a
+  section break above and bind tightly to the body below. The editable's
+  line-height now matches the typography model (1.7 / 1.3 for headings) instead of
+  inheriting a tighter value, and clicking in a between-block gap places the caret
+  in the nearest block.
+- Updated dependencies [21d950e]
+- Updated dependencies [2199417]
+- Updated dependencies [dd74cb0]
+- Updated dependencies [3b0de0f]
+- Updated dependencies [41773ac]
+- Updated dependencies [f537d85]
+- Updated dependencies [75d2cc9]
+- Updated dependencies [92f8e5b]
+  - @wingleeio/ori-core@0.3.3
+  - @wingleeio/ori-pretext@0.0.2
+
 ## 0.3.8
 
 ### Patch Changes
