@@ -150,10 +150,24 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     [],
   );
 
-  // Create the imperative contentEditable view once.
-  useEffect(() => {
+  // Create the imperative contentEditable view once. A layout effect (not a
+  // passive one) builds the visible window *before the first paint*, so the
+  // document shows up a frame sooner — no flash of an empty editor.
+  //
+  // On the *first* mount (controller not yet sized) seed width/viewport from the
+  // DOM so that first render already measures and windows at the real size (no
+  // width-0 reflow). We only do this when width is still 0: on later re-runs of
+  // this effect (e.g. `readOnly` toggled) the width is owned by the width-sync
+  // effect's ResizeObserver — seeding here would set width ahead of it and make
+  // its "did width change?" background-measure restart guard miss a real change.
+  useLayoutEffect(() => {
     const el = contentRef.current;
     if (!el) return;
+    const sc = scrollerRef.current;
+    if (sc && editor.getSnapshot().width === 0) {
+      editor.setWidth(el.clientWidth);
+      editor.setViewport(sc.scrollTop, sc.clientHeight);
+    }
     const view = new EditorView(el, editor, {
       readOnly,
       renderAtom: (t) => renderersRef.current.atomRenderers?.[t],
