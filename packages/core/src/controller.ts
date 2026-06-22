@@ -385,7 +385,11 @@ export class EditorController {
         !this.contentHeights.has(id) ||
         !this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))
       ) {
-        this.measure(id);
+        // Defer measurement until a real width is known. Measuring at width 0
+        // wraps every block to a single line and is discarded by the first
+        // setWidth() anyway — a wasted O(n) canvas pass on every note open.
+        // Until then the virtualizer's default height estimates the document.
+        if (this.width > 0) this.measure(id);
       } else {
         // Content is unchanged, but a reorder can flip a block's leading-gap
         // suppression (it just became, or stopped being, the first block).
@@ -495,15 +499,50 @@ export class EditorController {
       return;
     }
     this.viewport = { scrollTop, viewportHeight };
+    this.measureViewport();
     this.notify();
   }
 
   setWidth(width: number): void {
     if (width === this.width || width <= 0) return;
     this.width = width;
+    // Every cached height is stale at the new width; drop the cache and
+    // re-measure lazily. Off-screen blocks keep their prior height as an
+    // estimate until they scroll back into the window.
     this.cache.clear();
-    for (const id of this.virtualizer.getOrder()) this.measure(id);
+    this.measureViewport();
     this.notify();
+  }
+
+  /**
+   * Measure the blocks in (and within `overscan` of) the viewport that aren't
+   * already valid at the current width. Measurement is lazy: off-screen blocks
+   * keep the virtualizer's height estimate until they scroll near, so opening a
+   * large note costs O(viewport), not O(blocks). Because the overscan window
+   * extends beyond the visible area, a block is measured before it scrolls
+   * on-screen, so heights resolve off-screen and the visible content never
+   * jumps; only the scrollbar refines as estimates become exact.
+   */
+  private measureViewport(): void {
+    if (this.width <= 0 || this.virtualizer.count() === 0) return;
+    // Measuring a block changes its height, shifting which blocks the window
+    // covers — so iterate to a fixed point. Estimates are close to real heights,
+    // so this converges in 1–2 passes; the cap is just a safety bound.
+    for (let pass = 0; pass < 4; pass += 1) {
+      const win = this.virtualizer.window(
+        this.viewport.scrollTop,
+        this.viewport.viewportHeight,
+        this.overscan,
+      );
+      let measuredAny = false;
+      for (const it of win.items) {
+        if (!this.cache.isValid(it.id, this.versions.get(it.id) ?? 1, this.width, this.tKeyFor(it.id))) {
+          this.measure(it.id);
+          measuredAny = true;
+        }
+      }
+      if (!measuredAny) break;
+    }
   }
 
   setTypography(typography: Typography): void {
