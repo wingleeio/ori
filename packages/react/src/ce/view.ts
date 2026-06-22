@@ -114,6 +114,16 @@ export class EditorView {
       }, 0);
     });
     on("compositionstart", () => {
+      // Composing after Cmd+A replaces the whole document: delete it first so the
+      // IME composes into a single empty block (the DOM range only covers the
+      // window, so the browser alone would leave off-screen blocks behind).
+      if (this.allSelected) {
+        this.allSelected = false;
+        this.editor.selectAll();
+        this.editor.deleteBackward();
+        this.editor.demoteEmptyBlock();
+        this.commit();
+      }
       this.composing = true;
       const el = blockElOf(window.getSelection()?.anchorNode ?? null, this.root);
       this.composeBlockId = el?.dataset.blockId ?? null;
@@ -183,11 +193,13 @@ export class EditorView {
       const sel = this.readSelection();
       if (!sel) return;
       // After Cmd+A the model holds the whole-document selection; the DOM can
-      // only show the rendered window. Don't let the (smaller) DOM range clobber
-      // it — unless the user collapsed it (clicked / arrowed), which ends select-
-      // all and resumes normal DOM→model sync.
-      if (this.allSelected && !isCollapsed(sel)) return;
-      this.allSelected = false;
+      // only show the rendered window. Keep it while the DOM still spans that
+      // whole window (the select-all feedback range). A collapse or a narrowing
+      // (shift-click / drag) means the user re-selected → resume DOM→model sync.
+      if (this.allSelected) {
+        if (this.domSelectionSpansWindow(sel)) return;
+        this.allSelected = false;
+      }
       this.editor.setSelection(sel);
       // DOM is already the source of truth here — record the revision so the
       // resulting React sync() doesn't write the selection back and collapse it.
@@ -559,15 +571,31 @@ export class EditorView {
 
   /** Formatting + history shortcuts (the browser fires these as keydown). */
   private onKeyDown(e: KeyboardEvent) {
-    if (this.opts.readOnly) return;
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
     const k = e.key.toLowerCase();
+    // Select-all works even read-only (so a long document can be copied whole):
+    // set the whole-document model selection (copy/cut serialize from it) and
+    // highlight the rendered window. The native selection would cover only the
+    // mounted blocks, silently dropping off-screen content from a copy.
+    if (k === "a") {
+      e.preventDefault();
+      this.editor.selectAll();
+      this.allSelected = true;
+      this.selectRenderedRangeInDom();
+      this.lastRevision = this.rev();
+      return;
+    }
+    if (this.opts.readOnly) return;
     const mark = ({ b: "bold", i: "italic", u: "underline", e: "code" } as const)[k];
     if (mark) {
       e.preventDefault();
-      const sel = this.readSelection();
-      if (sel) this.editor.setSelection(sel);
+      // After Cmd+A the model already holds the whole-document selection; don't
+      // re-read the (clipped) DOM range, which would shrink it to the window.
+      if (!this.allSelected) {
+        const sel = this.readSelection();
+        if (sel) this.editor.setSelection(sel);
+      }
       this.editor.toggleMark(mark);
       this.commit();
     } else if (k === "z") {
@@ -579,17 +607,24 @@ export class EditorView {
       e.preventDefault();
       this.editor.redo();
       this.commit();
-    } else if (k === "a") {
-      // Select-all must cover the whole document, not just the rendered window:
-      // the browser's native Cmd+A only selects mounted DOM, so a copy/cut would
-      // silently drop off-screen blocks. Set the model selection to the whole doc
-      // (copy/cut serialize from the model) and highlight the rendered range.
-      e.preventDefault();
-      this.editor.selectAll();
-      this.allSelected = true;
-      this.selectRenderedRangeInDom();
-      this.lastRevision = this.rev();
     }
+  }
+
+  /** Whether a DOM selection spans the whole rendered window — i.e. it's the
+   *  select-all feedback range (first rendered block start → last block end),
+   *  not a user-narrowed selection within it. */
+  private domSelectionSpansWindow(sel: { anchor: Pos; focus: Pos }): boolean {
+    const blocks = Array.from(this.root.querySelectorAll(BLOCK_SEL)) as HTMLElement[];
+    if (blocks.length === 0) return false;
+    const firstId = blocks[0].dataset.blockId;
+    const lastId = blocks[blocks.length - 1].dataset.blockId;
+    if (!lastId) return false;
+    const lastLen = this.editor.getBlockText(lastId).length;
+    const ends = [sel.anchor, sel.focus];
+    return (
+      ends.some((p) => p.blockId === firstId && p.offset === 0) &&
+      ends.some((p) => p.blockId === lastId && p.offset === lastLen)
+    );
   }
 
   /** Visually select all currently-rendered blocks (feedback for select-all);
@@ -853,7 +888,14 @@ export class EditorView {
   private onPaste(e: ClipboardEvent) {
     if (this.opts.readOnly || !e.clipboardData) return;
     e.preventDefault();
-    const sel = this.readSelection();
+    // After Cmd+A, paste replaces the whole document, not the rendered window the
+    // DOM range would report.
+    let sel = this.readSelection();
+    if (this.allSelected) {
+      this.allSelected = false;
+      this.editor.selectAll();
+      sel = this.editor.getSelection();
+    }
     if (sel) {
       this.editor.setSelection(sel);
       if (!isCollapsed(sel)) this.editor.deleteBackward();
