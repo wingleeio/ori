@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { BenchCharts } from "./bench-charts";
 import { LiveEditor } from "./live-editor";
 
 /* ── crafted editor "window" with a virtualization rail ─────────────────── */
@@ -162,6 +163,27 @@ export default function HomePage() {
           </p>
           <div className="mt-8">
             <LiveEditor />
+          </div>
+        </div>
+      </section>
+
+      {/* ── benchmark ────────────────────────────────────────────────────── */}
+      <section className="border-b border-fd-border">
+        <div className="mx-auto w-full max-w-6xl px-6 py-20">
+          <p className="ff-mono mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
+            <span className="inline-block h-px w-7 bg-fd-primary" />
+            benchmark
+          </p>
+          <h2 className="ff-display text-3xl tracking-tight text-fd-foreground sm:text-4xl">
+            Loads fast as documents grow.
+          </h2>
+          <p className="mt-3 max-w-2xl text-fd-muted-foreground">
+            The same document loaded into ori and four other editors. ori renders only the visible
+            viewport, so load time stays roughly flat as the document grows; the others render every
+            block.
+          </p>
+          <div className="mt-10">
+            <BenchCharts />
           </div>
         </div>
       </section>

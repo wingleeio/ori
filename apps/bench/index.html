@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ori benchmark harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        font: 16px/1.6 Inter, system-ui, sans-serif;
+      }
+      /* A fixed viewport so the virtualized editor (ori) has a real window to
+         render into; the others ignore it and render the whole document. */
+      #app {
+        width: 720px;
+        height: 600px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "bench",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Editor load benchmark (ori vs TipTap/Lexical/Quill). Not published.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4174"
+  },
+  "dependencies": {
+    "@wingleeio/ori-core": "workspace:*",
+    "@wingleeio/ori-react": "workspace:*",
+    "@tiptap/core": "^2.11.5",
+    "@tiptap/pm": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "lexical": "^0.23.1",
+    "@lexical/rich-text": "^0.23.1",
+    "quill": "^2.0.3",
+    "slate": "^0.112.0",
+    "slate-react": "^0.112.1",
+    "slate-history": "^0.110.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "yjs": "^13.6.21"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.0"
+  }
+}
