@@ -1066,6 +1066,17 @@ export class EditorController {
       return;
     }
     const pos = sel.focus;
+    const order = this.virtualizer.getOrder();
+    const idx = this.indexOf(pos.blockId);
+    // Caret on an atomic (non-text) block — Backspace removes the block itself.
+    if (idx >= 0 && !this.nodeFor(pos.blockId).text && order.length > 1) {
+      const prev = order[idx - 1];
+      this.deleteBlock(pos.blockId);
+      this.setSelection(
+        caret(prev ? position(prev, this.lengthOf(prev)) : position(order[idx + 1], 0)),
+      );
+      return;
+    }
     if (pos.offset > 0) {
       const after = deleteRange(
         this.doc,
@@ -1074,6 +1085,15 @@ export class EditorController {
         pos,
       );
       this.setSelection(caret(after));
+      return;
+    }
+    const prevId = order[idx - 1];
+    if (prevId && !this.nodeFor(prevId).text) {
+      // The previous block is atomic (divider/image): delete it rather than
+      // merging this block's text into its hidden Y.Text, which would make the
+      // text disappear. Backspace at a block start removes the divider above it.
+      this.deleteBlock(prevId);
+      this.setSelection(caret(position(pos.blockId, 0)));
       return;
     }
     const merged = mergeWithPrevious(this.doc, this.blocks, pos.blockId);
@@ -1090,19 +1110,41 @@ export class EditorController {
       return;
     }
     const pos = sel.focus;
+    const order = this.virtualizer.getOrder();
+    const idx = this.indexOf(pos.blockId);
+    // Caret on an atomic block — Delete removes the block itself.
+    if (idx >= 0 && !this.nodeFor(pos.blockId).text && order.length > 1) {
+      const next = order[idx + 1];
+      this.deleteBlock(pos.blockId);
+      this.setSelection(
+        caret(next ? position(next, 0) : position(order[idx - 1], this.lengthOf(order[idx - 1]))),
+      );
+      return;
+    }
     const len = this.lengthOf(pos.blockId);
     if (pos.offset < len) {
       deleteRange(this.doc, this.blocks, pos, position(pos.blockId, pos.offset + 1));
       this.setSelection(caret(pos));
       return;
     }
-    const order = this.virtualizer.getOrder();
-    const idx = this.indexOf(pos.blockId);
     const next = order[idx + 1];
-    if (next) {
-      mergeWithPrevious(this.doc, this.blocks, next);
+    if (!next) return;
+    if (!this.nodeFor(next).text) {
+      // The next block is atomic: delete it instead of merging it into this one
+      // (which would append its empty hidden text and leave a stray block).
+      this.deleteBlock(next);
       this.setSelection(caret(pos));
+      return;
     }
+    mergeWithPrevious(this.doc, this.blocks, next);
+    this.setSelection(caret(pos));
+  }
+
+  /** Remove a block entirely (used to delete atomic blocks like dividers). */
+  private deleteBlock(id: string): void {
+    const idx = this.indexOf(id);
+    if (idx < 0) return;
+    this.doc.transact(() => this.blocks.delete(idx, 1));
   }
 
   // ---------------------------------------------------------------------------

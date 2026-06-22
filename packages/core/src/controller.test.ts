@@ -132,6 +132,37 @@ describe("EditorController", () => {
     expect(divider.height).toBe(33);
   });
 
+  it("deleting across an atomic block removes the block, never hides text in it", () => {
+    const doc = createNoteDoc([{ text: "before" }, { text: "after" }]);
+    const ed = new EditorController({
+      doc,
+      measurer: createMonospaceMeasurer(),
+      width: 300,
+      schema: { blocks: { divider: { type: "divider", text: false, measure: () => 33 } } },
+    });
+    const [a, b] = ed.blockIds();
+    ed.setSelection(at(a, "before".length));
+    ed.insertBlockAfterSelection("divider"); // before | divider | after
+    const dividerId = ed.blockIds()[1];
+
+    // Backspace at the start of "after": deletes the divider, keeps both texts.
+    ed.setSelection(at(b, 0));
+    ed.deleteBackward();
+    expect(ed.blockIds()).toEqual([a, b]);
+    expect(ed.blockIds()).not.toContain(dividerId); // divider gone, not hiding text
+    expect(ed.getBlockText(a)).toBe("before");
+    expect(ed.getBlockText(b)).toBe("after");
+
+    // Re-insert and Forward-delete at the end of "before": also removes it.
+    ed.setSelection(at(a, "before".length));
+    ed.insertBlockAfterSelection("divider");
+    ed.setSelection(at(a, "before".length));
+    ed.deleteForward();
+    expect(ed.blockIds()).toEqual([a, b]);
+    expect(ed.getBlockText(a)).toBe("before");
+    expect(ed.getBlockText(b)).toBe("after");
+  });
+
   it("re-measures a width-dependent atomic block on resize", () => {
     const doc = createNoteDoc();
     const ed = new EditorController({
