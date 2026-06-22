@@ -50,6 +50,13 @@ describe("clipboard", () => {
     expect(blocks[1].items.find((r) => r.text === "there")?.marks?.bold).toBe(true);
   });
 
+  it("preserves whitespace and newlines inside <pre> (pasted code)", () => {
+    const blocks = htmlToBlocks("<pre>  if (x) {\n    y();\n  }</pre>");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("code");
+    expect(blocks[0].items.map((i) => i.text).join("")).toBe("  if (x) {\n    y();\n  }");
+  });
+
   it("reads legacy v1 (array-of-items) json as paragraphs", () => {
     const legacy = JSON.stringify({ v: 1, blocks: [[{ text: "old", marks: { bold: true } }]] });
     const back = deserializeOri(legacy)!;

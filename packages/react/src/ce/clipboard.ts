@@ -139,17 +139,21 @@ export function htmlToBlocks(html: string): ClipBlock[] {
   const BLOCK = new Set([
     "P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "SECTION", "ARTICLE", "UL", "OL",
   ]);
-  const walk = (node: Node, marks: Marks) => {
+  const walk = (node: Node, marks: Marks, pre: boolean) => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
-        push((child.textContent ?? "").replace(/\s+/g, " "), marks);
+        // Preserve whitespace (indentation, newlines) inside <pre> so pasted
+        // code keeps its shape; collapse it everywhere else as HTML does.
+        const raw = child.textContent ?? "";
+        push(pre ? raw : raw.replace(/\s+/g, " "), marks);
         continue;
       }
       if (child.nodeType !== Node.ELEMENT_NODE) continue;
       const el = child as HTMLElement;
       const tag = el.tagName;
       if (tag === "BR") {
-        if (cur.length) flush();
+        if (pre) push("\n", marks);
+        else if (cur.length) flush();
         continue;
       }
       const m: Marks = { ...marks };
@@ -163,11 +167,11 @@ export function htmlToBlocks(html: string): ClipBlock[] {
       const isBlock = BLOCK.has(tag);
       if (isBlock && cur.length) flush();
       if (isBlock) curType = blockTypeForTag(tag);
-      walk(el, m);
+      walk(el, m, pre || tag === "PRE");
       if (isBlock) flush();
     }
   };
-  walk(doc.body, {});
+  walk(doc.body, {}, false);
   if (cur.length) flush();
   while (blocks.length && blocks[0].items.length === 0) blocks.shift();
   while (blocks.length && blocks[blocks.length - 1].items.length === 0) blocks.pop();
