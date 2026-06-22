@@ -106,8 +106,10 @@
   line-height: 1.3;
 }
 .ori-ce .ori-block-quote {
+  /* 3px bar + 12px indent = 15px left inset; mirrored by the quote node's
+     `inset` so measurement matches (styles.css and nodes.ts must agree). */
   border-inline-start: 3px solid var(--ori-quote-border, currentColor);
-  padding-inline-start: 0.75em;
+  padding-inline-start: 12px;
   color: var(--ori-quote-text, inherit);
 }
 .ori-ce .ori-block-code {
@@ -118,7 +120,9 @@
   line-height: 1.7;
   background: var(--ori-codeblock-bg, rgba(135, 131, 120, 0.1));
   border-radius: 6px;
-  padding: 0.4em 0.6em;
+  /* 8px/12px padding mirrored by the code node's `inset` (px, not em, so the
+     model can reproduce it exactly). */
+  padding: 8px 12px;
 }
 
 .ori-line {

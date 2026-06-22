@@ -333,6 +333,18 @@ describe("EditorController", () => {
       expect([x, y, z].map((id) => ed.getBlockType(id))).toEqual(["heading", "heading", "heading"]);
     });
 
+    it("a block's inset adds its vertical padding to the measured height", () => {
+      const { ed } = make(["x"]);
+      const [id] = ed.blockIds();
+      ed.setSelection(at(id, 0));
+      ed.setBlockTypeAtSelection("code");
+      const layout = ed.getLayout(id)!;
+      expect(layout.lineCount).toBe(1);
+      // One line at the code line-height (round(15 * 1.7) = 26) + 8px top + 8px
+      // bottom inset, matching the rendered CSS padding so virtualization agrees.
+      expect(layout.height).toBe(26 + 16);
+    });
+
     it("selectAll spans the whole document; collapse re-collapses it", () => {
       const { ed } = make(["a", "b", "c"]);
       const ids = ed.blockIds();

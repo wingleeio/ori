@@ -168,6 +168,31 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     viewRef.current?.sync();
   }, [snapshot.revision]);
 
+  // Lazy measurement makes the first paint O(viewport) but leaves total height
+  // an estimate. Finish measuring off-screen blocks from idle time so the
+  // scrollbar and scroll-to-bottom become exact, without blocking open; the
+  // view's scroll-anchoring keeps content from jumping as heights resolve.
+  useEffect(() => {
+    let cancelled = false;
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (h: number) => void;
+    };
+    const schedule = w.requestIdleCallback
+      ? (cb: () => void) => w.requestIdleCallback!(cb, { timeout: 200 })
+      : (cb: () => void) => window.setTimeout(cb, 16) as unknown as number;
+    const cancel = w.cancelIdleCallback ?? ((h: number) => window.clearTimeout(h));
+    const step = () => {
+      if (cancelled) return;
+      if (editor.measurePending(300)) handle = schedule(step);
+    };
+    let handle = schedule(step);
+    return () => {
+      cancelled = true;
+      cancel(handle);
+    };
+  }, [editor]);
+
   useEffect(() => {
     if (autoFocus) contentRef.current?.focus();
   }, [autoFocus]);

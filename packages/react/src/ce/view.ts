@@ -265,7 +265,12 @@ export class EditorView {
     if (this.composing) return;
     const rev = this.rev();
     if (rev === this.lastRevision) return;
+    // Pin the topmost visible block before reconciling so a height change above
+    // it (e.g. lazy measurement resolving an estimated block) compensates the
+    // scroll instead of jumping the content the user is reading.
+    const anchor = this.captureAnchor();
     const rendered = this.renderBlocks();
+    if (anchor) this.restoreAnchor(anchor);
     // Restore the DOM selection from the model only when the re-render actually
     // re-rendered the *selection's own block* — its nodes were replaced, so the
     // model is authoritative (e.g. an app command edited that block). When some
@@ -275,6 +280,41 @@ export class EditorView {
     const sel = this.editor.getSelection();
     if (sel && (rendered.has(sel.anchor.blockId) || rendered.has(sel.focus.blockId))) this.writeSelection();
     this.lastRevision = rev;
+  }
+
+  /** The scrolling ancestor (the editable lives inside it). */
+  private scroller(): HTMLElement | null {
+    return this.root.closest(".ori-scroller") as HTMLElement | null;
+  }
+
+  /**
+   * Record the topmost in-view block and its pixel offset from the scroller's
+   * top edge. Restoring it after a reconcile keeps the reading position fixed
+   * when block heights above it change (the crux of jank-free lazy measurement).
+   */
+  private captureAnchor(): { id: string; offset: number } | null {
+    const sc = this.scroller();
+    if (!sc) return null;
+    const scTop = sc.getBoundingClientRect().top;
+    for (const child of Array.from(this.root.children) as HTMLElement[]) {
+      const id = child.dataset.blockId;
+      if (!id) continue;
+      const r = child.getBoundingClientRect();
+      if (r.bottom > scTop + 1) return { id, offset: r.top - scTop };
+    }
+    return null;
+  }
+
+  private restoreAnchor(anchor: { id: string; offset: number }): void {
+    const sc = this.scroller();
+    if (!sc) return;
+    const el = this.root.querySelector(`[data-block-id="${esc(anchor.id)}"]`) as HTMLElement | null;
+    if (!el) return;
+    const delta = el.getBoundingClientRect().top - sc.getBoundingClientRect().top - anchor.offset;
+    // Only correct a real shift; sub-pixel noise would otherwise fight the user's
+    // own scrolling. Adjusting scrollTop re-fires onScroll, which converges (the
+    // heights are now stable, so the next pass finds delta ≈ 0).
+    if (Math.abs(delta) >= 1) sc.scrollTop += delta;
   }
 
   /** After a controlled (preventDefault'd) edit: re-render + restore the caret. */

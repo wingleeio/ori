@@ -15,6 +15,21 @@ export interface BlockMeasureContext {
   attrs: Record<string, unknown>;
 }
 
+/**
+ * Content inset (px) for a text block whose rendered CSS adds padding/border
+ * that shifts its text in from the block box (e.g. a code block's padding or a
+ * quote's bar + indent). The layout engine subtracts the horizontal inset from
+ * the wrap width and adds the vertical inset to the height, so measurement —
+ * and thus wrapping and virtualized scroll height — matches the DOM exactly.
+ * These MUST be kept in sync with the host's CSS padding/border.
+ */
+export interface BlockInset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface BlockNode {
   type: string;
   /**
@@ -28,6 +43,8 @@ export interface BlockNode {
   /** Spacing in px above this block — its top margin / section break
    * (defaults to the editor's blockSpacing; the first block always gets 0). */
   spacing?: number;
+  /** Content inset (px) matching the block's rendered CSS padding/border. */
+  inset?: BlockInset;
   /** Height in px for an atomic block, as a function of width + attrs. */
   measure?: (ctx: BlockMeasureContext) => number;
 }
@@ -69,10 +86,15 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
       lineHeight: 1.3,
     }),
   },
-  quote: { type: "quote", text: true },
+  // Insets mirror the rendered CSS (styles.css): the quote's 3px bar + 12px
+  // indent, and the code block's 8px/12px padding. Keeping them here lets the
+  // layout engine reduce the wrap width and add the vertical padding so its
+  // measurement matches the DOM.
+  quote: { type: "quote", text: true, inset: { top: 0, right: 0, bottom: 0, left: 15 } },
   code: {
     type: "code",
     text: true,
+    inset: { top: 8, right: 12, bottom: 8, left: 12 },
     typography: (b) => ({
       ...b,
       fontFamily: b.monoFamily,

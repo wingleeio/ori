@@ -338,12 +338,22 @@ export class EditorController {
     const node = this.nodeFor(id);
     if (node.text) {
       const items = textToInline(blockText(block), this.atomResolver());
-      return layoutBlock(items, {
-        width: this.width,
+      // A block's CSS padding/border (code, quote) shifts its text in. Subtract
+      // the horizontal inset from the wrap width and add the vertical inset to
+      // the height so wrapping and virtualized height match the rendered DOM.
+      const inset = node.inset;
+      const wrapWidth =
+        this.width > 0 && inset ? Math.max(1, this.width - inset.left - inset.right) : this.width;
+      const layout = layoutBlock(items, {
+        width: wrapWidth,
         typography: this.typographyFor(id),
         measurer: this.measurer,
         detailed,
       });
+      if (inset && inset.top + inset.bottom > 0) {
+        return { ...layout, height: layout.height + inset.top + inset.bottom };
+      }
+      return layout;
     }
     // Atomic block: one synthetic line. Its box height comes from the node;
     // the caret line keeps a normal height so it doesn't span the whole block.
@@ -549,6 +559,30 @@ export class EditorController {
       }
       if (!measuredAny) break;
     }
+  }
+
+  /**
+   * Measure up to `budget` not-yet-measured blocks (in document order), for a
+   * host to drive from idle time after the first paint. Lazy measurement makes
+   * the first paint O(viewport), but leaves total height an estimate; running
+   * this to completion makes the scrollbar and scroll-to-bottom exact without
+   * blocking open. Scroll-anchoring in the view keeps the content from jumping
+   * as these resolve. Returns true while blocks remain unmeasured.
+   */
+  measurePending(budget = 200): boolean {
+    if (this.width <= 0) return false;
+    let measured = 0;
+    for (const id of this.virtualizer.getOrder()) {
+      if (this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))) continue;
+      if (measured >= budget) {
+        if (measured > 0) this.notify();
+        return true;
+      }
+      this.measure(id);
+      measured += 1;
+    }
+    if (measured > 0) this.notify();
+    return false;
   }
 
   setTypography(typography: Typography): void {
