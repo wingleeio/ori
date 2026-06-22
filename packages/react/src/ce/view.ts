@@ -719,12 +719,17 @@ export class EditorView {
     // element children), which desyncs the atom's and following spans' offsets.
     // Route those through the controller so the block re-renders into proper runs.
     const nearAtom = (off: number) => atomAt(off) || atomAt(off - 1);
+    // An atomic/custom block (divider, image) is contentEditable=false and has no
+    // editable text node, so the browser can't type into it. Route through the
+    // controller, which redirects the insertion into a real paragraph instead of
+    // the block's hidden Y.Text.
+    const atomicBlock = !!this.opts.renderBlock(this.editor.getBlockType(blockId));
     // A collapsed replacement with no real (non-collapsed) target range ALWAYS
     // stays native: the browser auto-corrects the word in place and onInput reads
     // it back. Routing it through the controller would only insert (no range to
     // delete) and duplicate the word, e.g. "teh" -> "tehthe" — even when a pending
     // mark is staged, so this must come before the pending-mark exception below.
-    if (collapsed && t === "insertReplacementText") return;
+    if (collapsed && t === "insertReplacementText" && !atomicBlock) return;
     // Collapsed typing stays native too — UNLESS a mark is staged at the caret
     // (Bold toggled with no selection), which the browser would type unstyled;
     // route that through the controller so the inserted text is painted bold.
@@ -733,6 +738,7 @@ export class EditorView {
       t === "insertText" &&
       !this.editor.hasPendingMarks() &&
       !multiline &&
+      !atomicBlock &&
       !nearAtom(start.offset)
     )
       return;
