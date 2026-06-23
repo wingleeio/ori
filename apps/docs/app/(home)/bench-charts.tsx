@@ -241,8 +241,8 @@ export function BenchCharts() {
           <p className="mt-2 text-sm text-fd-muted-foreground">
             CodeMirror is fastest — virtualized, with a lightweight document model. ori virtualizes
             its rendering too, but building its CRDT document is O(n), so its time grows to{" "}
-            <span className="text-fd-foreground">~17ms</span> at 5,000 blocks — still well under the
-            full-render editors (<span className="text-fd-foreground">46–260ms</span>).
+            <span className="text-fd-foreground">~15ms</span> at 5,000 blocks — still well under the
+            full-render editors (<span className="text-fd-foreground">42–133ms</span>).
           </p>
         </div>
         <div>
@@ -254,7 +254,7 @@ export function BenchCharts() {
             played={played}
           />
           <p className="mt-2 text-sm text-fd-muted-foreground">
-            ori (<span className="text-fd-foreground">~76</span>) and CodeMirror (
+            ori (<span className="text-fd-foreground">~77</span>) and CodeMirror (
             <span className="text-fd-foreground">~41</span>) render only the viewport at any size.
             The others render every block.
           </p>
@@ -275,13 +275,14 @@ export function BenchCharts() {
         <div className="text-sm text-fd-muted-foreground">
           <p>
             Here virtualization pays off for ori: typing only re-renders the block you&apos;re in, so
-            it stays flat at <span className="text-fd-foreground">~0.3ms/keystroke</span> whether the
+            it stays flat at <span className="text-fd-foreground">~0.1ms/keystroke</span> whether the
             note has 100 or 5,000 blocks.
           </p>
           <p className="mt-3">
-            CodeMirror and Lexical are a touch faster; TipTap and Quill creep up. Slate re-renders the
-            whole document on every keystroke — <span className="text-fd-foreground">~25ms at 5,000
-            blocks</span>, where typing visibly lags. Toggle the others off to compare the fast ones.
+            CodeMirror, Lexical, TipTap, and Quill all stay sub-millisecond in this fixture. Slate
+            still scales with document size — <span className="text-fd-foreground">~9.8ms at 5,000
+            blocks</span>, where typing starts to feel heavy. Toggle the others off to compare the
+            fast ones.
           </p>
         </div>
       </div>
@@ -290,7 +291,8 @@ export function BenchCharts() {
         {BENCH_ENV}. <span className="text-fd-muted-foreground">Loading:</span> main-thread time to
         mount + lay out the document (paint excluded).{" "}
         <span className="text-fd-muted-foreground">Typing:</span> main-thread scripting time per
-        keystroke (beforeinput + input handlers), typing real characters — lower is snappier.
+        keystroke (insert-text event work: beforeinput + input when emitted), typing real characters
+        — lower is snappier.
         CodeMirror renders plain text here (it also powers Obsidian&apos;s rich text); ori is a rich
         block editor with built-in CRDT collaboration. Absolute ms vary by machine. Reproduce with{" "}
         <code className="text-fd-muted-foreground">apps/bench</code>.
