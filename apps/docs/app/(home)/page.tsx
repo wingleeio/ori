@@ -178,9 +178,9 @@ export default function HomePage() {
             Loads fast as documents grow.
           </h2>
           <p className="mt-3 max-w-2xl text-fd-muted-foreground">
-            The same document loaded into ori and four other editors. ori renders only the visible
-            viewport, so load time stays roughly flat as the document grows; the others render every
-            block.
+            The same document loaded into ori and five other editors. ori renders only the visible
+            viewport, so it scales far better than the editors that render every block. The numbers
+            measure load — not editing speed.
           </p>
           <div className="mt-10">
             <BenchCharts />

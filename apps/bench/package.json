@@ -21,6 +21,8 @@
     "slate": "^0.112.0",
     "slate-react": "^0.112.1",
     "slate-history": "^0.110.3",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.34.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "yjs": "^13.6.21"

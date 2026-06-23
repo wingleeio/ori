@@ -1,3 +1,4 @@
+import { mountCodemirror } from "./editors/codemirror";
 import { mountLexical } from "./editors/lexical";
 import { mountOri } from "./editors/ori";
 import { mountQuill } from "./editors/quill";
@@ -22,6 +23,7 @@ const MOUNT: Record<string, Mount> = {
   lexical: mountLexical,
   quill: mountQuill,
   slate: mountSlate,
+  codemirror: mountCodemirror,
 };
 
 const params = new URLSearchParams(location.search);
