@@ -167,11 +167,40 @@ describe("iOS autocorrect / IME (getTargetRanges)", () => {
   });
 
   it("a plain collapsed keystroke is left native (not intercepted)", () => {
-    const { ce } = setup(["hi"]);
+    const { ce, editor } = setup(["hi"]);
     caretDom(ce, 0, 2);
+    let calls = 0;
+    const unsubscribe = editor.subscribe(() => {
+      calls += 1;
+    });
     // A collapsed insertText must not be preventDefault'd (native typing path).
     const e = beforeinputTarget(ce, "insertText", "x", targetRange(ce, 0, 2, 2));
     expect(e.defaultPrevented).toBe(false);
+    expect(calls).toBe(0);
+    unsubscribe();
+  });
+
+  it("a native keystroke updates the model from the known edit, without a block-wide diff", () => {
+    const { ce, editor, ids, blockEl } = setup(["hi"]);
+    caretDom(ce, 0, 2);
+    const spy = vi.spyOn(editor, "getBlockText");
+    const e = beforeinputTarget(ce, "insertText", "x", targetRange(ce, 0, 2, 2));
+    expect(e.defaultPrevented).toBe(false);
+    const callsAfterBeforeInput = spy.mock.calls.length;
+
+    const span = blockEl(0).querySelector("[data-off]") as HTMLElement;
+    const tn = span.firstChild as Text;
+    tn.data = "hix"; // what the browser just painted natively
+    const r = document.createRange();
+    r.setStart(tn, 3);
+    r.collapse(true);
+    const s = window.getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+    ce.dispatchEvent(new InputEvent("input", { bubbles: true }));
+
+    expect(spy.mock.calls.length).toBe(callsAfterBeforeInput);
+    expect(editor.getBlockText(ids[0])).toBe("hix");
   });
 
   it("a collapsed insertReplacementText stays native even with a pending mark (no duplication)", () => {

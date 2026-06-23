@@ -165,7 +165,7 @@
   background: var(--ori-caret, currentColor);
   border-radius: 1px;
   pointer-events: none;
-  will-change: opacity;
+  will-change: transform, opacity;
   animation: ori-caret-blink 1.1s steps(1, end) infinite;
 }
 

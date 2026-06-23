@@ -4,12 +4,13 @@ import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AtomRenderer, BlockRenderer } from "../renderers";
 import { ORI_MIME, deserializeOri, htmlToBlocks, serializeSelection, textToBlocks, type ClipBlock } from "./clipboard";
-import { BLOCK_SEL, blockElOf, buildRun, domToModel, esc, modelToDom } from "./dom";
+import { BLOCK_SEL, blockElOf, buildRun, domToModel, modelToDom } from "./dom";
 
 const PLACEHOLDER = "￼";
 
 /** A model position in the view layer (mirrors the controller's Position). */
 type Pos = { blockId: string; offset: number };
+type NativeEdit = { blockId: string; from: number; to: number; insert: string };
 
 /** Floating UI that "belongs" to the editor: a tap/focus into one of these must
  *  not drop the editor's selection (toolbar, slash/mention menu, a popover they
@@ -57,6 +58,8 @@ export class EditorView {
    *  rendered window can be highlighted in the DOM), so selectionchange must not
    *  clobber it back to the visible range. Cleared when the user re-selects. */
   private allSelected = false;
+  /** Exact edit the browser is about to perform on a native fast path. */
+  private pendingNativeEdit: NativeEdit | null = null;
 
   constructor(
     private root: HTMLElement,
@@ -379,8 +382,10 @@ export class EditorView {
       if (e.dataset.blockId) have.set(e.dataset.blockId, e);
     }
 
+    const visibleEls = new Map<string, HTMLElement>();
     let prev: HTMLElement | null = null;
-    for (const id of vis.map((v) => v.id)) {
+    for (const vb of vis) {
+      const id = vb.id;
       let el = have.get(id);
       if (el) {
         have.delete(id);
@@ -389,6 +394,7 @@ export class EditorView {
       }
       const anchor: ChildNode | null = prev ? prev.nextSibling : this.root.firstChild;
       if (anchor !== el) this.root.insertBefore(el, anchor);
+      visibleEls.set(id, el);
       prev = el;
     }
     for (const el of have.values()) {
@@ -397,7 +403,7 @@ export class EditorView {
     }
 
     for (const vb of vis) {
-      const el = this.root.querySelector(`[data-block-id="${esc(vb.id)}"]`) as HTMLElement | null;
+      const el = visibleEls.get(vb.id);
       if (!el) continue;
       // Inter-block spacing is the block's top margin (the gap *above* it), so a
       // heading owns its section break. It rides virtualization and matches the
@@ -672,6 +678,7 @@ export class EditorView {
   }
 
   private onBeforeInput(e: InputEvent) {
+    this.pendingNativeEdit = null;
     if (this.opts.readOnly) {
       e.preventDefault();
       return;
@@ -693,9 +700,8 @@ export class EditorView {
       range = this.editor.getSelection();
     }
     if (!range) return;
-    this.editor.setSelection(range);
     const collapsed = isCollapsed(range);
-    const ordered = this.editor.orderedSelection();
+    const ordered = collapsed ? null : this.orderRange(range);
     const start = ordered?.start ?? range.focus;
     const blockId = start.blockId;
     const ed = this.editor;
@@ -705,10 +711,15 @@ export class EditorView {
     // It must NOT cover deletion of an adjacent inline atom — the browser won't
     // remove a contentEditable=false node, so it would silently no-op and jolt
     // the caret; route those through the controller instead.
-    const atomAt = (off: number) =>
-      this.editor.getInline(blockId).some((it) => it.atom != null && it.start === off);
     const blockStr = this.editor.getBlockText(blockId);
     const blockLen = blockStr.length;
+    const hasAtoms = blockStr.includes(PLACEHOLDER);
+    let inline: ReturnType<EditorController["getInline"]> | null = null;
+    const atomAt = (off: number) => {
+      if (!hasAtoms) return false;
+      inline ??= this.editor.getInline(blockId);
+      return inline.some((it) => it.atom != null && it.start === off);
+    };
     // A block containing a hard break (multi-line code) is rendered with <br>s;
     // native typing/deletion at a break boundary produces an unwrapped text node
     // with no data-off, desyncing the offset map. Route those through the
@@ -743,76 +754,95 @@ export class EditorView {
       !atomicBlock &&
       !nearAtom(start.offset)
     )
+    {
+      if (e.data != null) {
+        this.pendingNativeEdit = { blockId, from: start.offset, to: start.offset, insert: e.data };
+      }
       return;
+    }
     // Forward delete is native only mid-block; at the block end it must merge the
     // next block through the controller (a native cross-block merge corrupts the
     // virtualized DOM). Backward delete is native only past offset 0 (offset 0
     // merges the previous block). Neither may consume an adjacent inline atom or
     // edit a multi-line block (break boundaries break the offset map).
-    if (collapsed && t === "deleteContentForward" && start.offset < blockLen && !atomAt(start.offset) && !multiline) return;
-    if (collapsed && t === "deleteContentBackward" && start.offset > 0 && !atomAt(start.offset - 1) && !multiline) return;
+    if (collapsed && t === "deleteContentForward" && start.offset < blockLen && !atomAt(start.offset) && !multiline) {
+      this.pendingNativeEdit = { blockId, from: start.offset, to: start.offset + 1, insert: "" };
+      return;
+    }
+    if (collapsed && t === "deleteContentBackward" && start.offset > 0 && !atomAt(start.offset - 1) && !multiline) {
+      this.pendingNativeEdit = { blockId, from: start.offset - 1, to: start.offset, insert: "" };
+      return;
+    }
 
     // Everything else (structural + cross-block) is handled through the controller.
-    if (t === "insertParagraph") {
-      e.preventDefault();
-      // Enter inside a code block adds a line to the block (real multi-line code)
-      // rather than splitting into a new block.
-      if (this.editor.getBlockType(blockId) === "code") ed.insertSoftBreak();
-      else ed.insertParagraphBreak();
-    } else if (t === "historyUndo") {
-      // Trackpad/menu undo (no keydown) would otherwise run the browser's native
-      // contentEditable undo, which knows nothing about our model.
-      e.preventDefault();
-      ed.undo();
-    } else if (t === "historyRedo") {
-      e.preventDefault();
-      ed.redo();
-    } else if (t.startsWith("delete")) {
-      e.preventDefault();
-      if (t === "deleteContentForward") ed.deleteForward();
-      else ed.deleteBackward();
-      // Clearing all of a heading/quote/code's text drops it back to a paragraph.
-      ed.demoteEmptyBlock();
-    } else if (t === "insertText" || t === "insertReplacementText") {
-      // Collapsed insertReplacementText, or ranged insert (autocorrect/spellcheck
-      // replacement, typing over a selection): replace the target range with the
-      // event's data. Paste has its own handler (onPaste).
-      e.preventDefault();
-      // Capture the replaced range's marks *before* deleting so the replacement
-      // inherits them — matching the browser's native replace-in-place (e.g. iOS
-      // autocorrecting a bold word keeps it bold).
-      const marks = ed.getActiveMarks();
-      if (!collapsed) ed.deleteBackward();
-      const text = e.data ?? this.dataTransferText(e);
-      if (text) ed.insertInline([{ text, start: 0, marks }]);
-    } else if (t === "insertLineBreak") {
-      // Shift+Enter. A soft break ("\n" in a block) is unreliable in
-      // contentEditable: the caret after a trailing <br> lands before it, so the
-      // next characters type onto the wrong line. In this block model Shift+Enter
-      // starts a new block instead — a clean new line with a correct caret (the
-      // same choice Notion-style block editors make).
-      e.preventDefault();
-      ed.insertParagraphBreak();
-    } else if (t.startsWith("format")) {
-      // Native formatting (the browser/mobile B/I/U buttons, or OS shortcuts that
-      // surface as beforeinput rather than keydown) would otherwise mutate the DOM
-      // without touching the model, and the next render would drop the styling.
-      // Route the ones we model through the controller; ignore the rest.
-      const fmt = (
-        {
-          formatBold: "bold",
-          formatItalic: "italic",
-          formatUnderline: "underline",
-          formatStrikeThrough: "strike",
-        } as const
-      )[t];
-      e.preventDefault();
-      if (!fmt) return; // unmodeled (e.g. formatFontColor): drop it rather than desync
-      ed.toggleMark(fmt);
-    } else {
-      return; // let the browser handle anything we don't model
-    }
-      this.commit();
+    let handled = true;
+    ed.batch(() => {
+      ed.setSelection(range);
+      if (t === "insertParagraph") {
+        e.preventDefault();
+        // Enter inside a code block adds a line to the block (real multi-line code)
+        // rather than splitting into a new block.
+        if (this.editor.getBlockType(blockId) === "code") ed.insertSoftBreak();
+        else ed.insertParagraphBreak();
+      } else if (t === "historyUndo") {
+        // Trackpad/menu undo (no keydown) would otherwise run the browser's native
+        // contentEditable undo, which knows nothing about our model.
+        e.preventDefault();
+        ed.undo();
+      } else if (t === "historyRedo") {
+        e.preventDefault();
+        ed.redo();
+      } else if (t.startsWith("delete")) {
+        e.preventDefault();
+        if (t === "deleteContentForward") ed.deleteForward();
+        else ed.deleteBackward();
+        // Clearing all of a heading/quote/code's text drops it back to a paragraph.
+        ed.demoteEmptyBlock();
+      } else if (t === "insertText" || t === "insertReplacementText") {
+        // Collapsed insertReplacementText, or ranged insert (autocorrect/spellcheck
+        // replacement, typing over a selection): replace the target range with the
+        // event's data. Paste has its own handler (onPaste).
+        e.preventDefault();
+        // Capture the replaced range's marks *before* deleting so the replacement
+        // inherits them — matching the browser's native replace-in-place (e.g. iOS
+        // autocorrecting a bold word keeps it bold).
+        const marks = ed.getActiveMarks();
+        if (!collapsed) ed.deleteBackward();
+        const text = e.data ?? this.dataTransferText(e);
+        if (text) ed.insertInline([{ text, start: 0, marks }]);
+      } else if (t === "insertLineBreak") {
+        // Shift+Enter. A soft break ("\n" in a block) is unreliable in
+        // contentEditable: the caret after a trailing <br> lands before it, so the
+        // next characters type onto the wrong line. In this block model Shift+Enter
+        // starts a new block instead — a clean new line with a correct caret (the
+        // same choice Notion-style block editors make).
+        e.preventDefault();
+        ed.insertParagraphBreak();
+      } else if (t.startsWith("format")) {
+        // Native formatting (the browser/mobile B/I/U buttons, or OS shortcuts that
+        // surface as beforeinput rather than keydown) would otherwise mutate the DOM
+        // without touching the model, and the next render would drop the styling.
+        // Route the ones we model through the controller; ignore the rest.
+        const fmt = (
+          {
+            formatBold: "bold",
+            formatItalic: "italic",
+            formatUnderline: "underline",
+            formatStrikeThrough: "strike",
+          } as const
+        )[t];
+        e.preventDefault();
+        if (!fmt) {
+          handled = false; // unmodeled (e.g. formatFontColor): drop it rather than desync
+          return;
+        }
+        ed.toggleMark(fmt);
+      } else {
+        handled = false; // let the browser handle anything we don't model
+      }
+    });
+    if (!handled) return;
+    this.commit();
   }
 
   /** Some replacement inputs carry their text on dataTransfer, not `data`. */
@@ -822,6 +852,8 @@ export class EditorView {
 
   private onInput() {
     if (this.composing || this.opts.readOnly) return;
+    const pending = this.pendingNativeEdit;
+    this.pendingNativeEdit = null;
     const blockEl = blockElOf(window.getSelection()?.anchorNode ?? null, this.root);
     if (!blockEl) {
       // structure changed under us (browser merged blocks) → full resync
@@ -830,6 +862,30 @@ export class EditorView {
       return;
     }
     const id = blockEl.dataset.blockId as string;
+    if (pending && pending.blockId === id) {
+      this.editor.batch(() => {
+        this.editor.setSelection({
+          anchor: { blockId: id, offset: pending.from },
+          focus: { blockId: id, offset: pending.to },
+        });
+        if (pending.to > pending.from) this.editor.deleteBackward();
+        if (pending.insert) this.editor.insertText(pending.insert);
+      });
+      this.reindex(blockEl);
+      blockEl.removeAttribute("data-sig");
+      if (!pending.insert) {
+        let demoted = false;
+        this.editor.batch(() => {
+          demoted = this.editor.demoteEmptyBlock();
+        });
+        if (demoted) {
+          this.commit();
+          return;
+        }
+      }
+      this.lastRevision = this.rev();
+      return;
+    }
     const next = this.domBlockText(blockEl);
     const cur = this.editor.getBlockText(id);
     if (next === cur) return;
@@ -843,9 +899,11 @@ export class EditorView {
     const from = p;
     const to = cur.length - s;
     const insert = next.slice(p, next.length - s);
-    this.editor.setSelection({ anchor: { blockId: id, offset: from }, focus: { blockId: id, offset: to } });
-    if (to > from) this.editor.deleteBackward();
-    if (insert) this.editor.insertText(insert);
+    this.editor.batch(() => {
+      this.editor.setSelection({ anchor: { blockId: id, offset: from }, focus: { blockId: id, offset: to } });
+      if (to > from) this.editor.deleteBackward();
+      if (insert) this.editor.insertText(insert);
+    });
     // The browser painted the text; realign the run offsets so live DOM positions
     // stay correct. Then INVALIDATE the block's render signature (don't stamp the
     // model's — the native DOM has only the text, not our run wrappers/marks, and
@@ -859,7 +917,13 @@ export class EditorView {
     blockEl.removeAttribute("data-sig");
     // A native deletion that empties a heading/quote/code drops it to a paragraph.
     // Re-render (the block's type — and CSS class — changed under the browser).
-    if (!insert && this.editor.demoteEmptyBlock()) {
+    let demoted = false;
+    if (!insert) {
+      this.editor.batch(() => {
+        demoted = this.editor.demoteEmptyBlock();
+      });
+    }
+    if (demoted) {
       this.commit();
       return;
     }

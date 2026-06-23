@@ -5,7 +5,6 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -119,11 +118,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   const scrollerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // (Re)starts the idle background-measurement loop; set by its effect below.
   const restartBgRef = useRef<() => void>(noop);
-  const [focused, setFocused] = useState(false);
-  const [caret, setCaret] = useState<{ x: number; y: number; h: number } | null>(null);
+  const focusedRef = useRef(false);
+  const readOnlyRef = useRef(readOnly);
+  const requestCaretUpdateRef = useRef<() => void>(noop);
+  readOnlyRef.current = readOnly;
 
   // Keep the latest renderers reachable without recreating the view.
   const renderersRef = useRef({ blockRenderers, atomRenderers });
@@ -229,16 +231,36 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   // Position the custom caret from the live DOM selection.
   useEffect(() => {
     let raf = 0;
+    const hide = () => {
+      const caret = caretRef.current;
+      if (caret) caret.style.visibility = "hidden";
+    };
     const update = () => {
       const content = contentRef.current;
+      const caret = caretRef.current;
       const s = window.getSelection();
-      if (!content || !s || s.rangeCount === 0 || !s.isCollapsed || !content.contains(s.anchorNode)) {
-        setCaret(null);
+      if (
+        !content ||
+        !caret ||
+        readOnlyRef.current ||
+        !focusedRef.current ||
+        !s ||
+        s.rangeCount === 0 ||
+        !s.isCollapsed ||
+        !content.contains(s.anchorNode)
+      ) {
+        hide();
         return;
       }
       const r = caretClientRect();
       const box = content.getBoundingClientRect();
-      if (r) setCaret({ x: r.left - box.left, y: r.top - box.top, h: r.height || 18 });
+      if (!r) {
+        hide();
+        return;
+      }
+      caret.style.transform = `translate3d(${r.left - box.left}px, ${r.top - box.top}px, 0)`;
+      caret.style.height = `${r.height || 18}px`;
+      caret.style.visibility = "visible";
     };
     // Measure now, then again after layout settles — an inline atom (mention)
     // mounts its renderer asynchronously, so its width (and the caret position
@@ -248,11 +270,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => requestAnimationFrame(update));
     };
+    requestCaretUpdateRef.current = schedule;
     document.addEventListener("selectionchange", schedule);
     const ro = new ResizeObserver(update);
     if (contentRef.current) ro.observe(contentRef.current);
     schedule();
     return () => {
+      requestCaretUpdateRef.current = noop;
       document.removeEventListener("selectionchange", schedule);
       ro.disconnect();
       cancelAnimationFrame(raf);
@@ -339,8 +363,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     }
   };
 
-  const showCaret = focused && !!caret && !readOnly;
-
   return (
     <div className={`ori-root${className ? ` ${className}` : ""}`} style={style}>
       <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll} onPointerDown={onPointerDown}>
@@ -348,14 +370,30 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
           <div
             className="ori-canvas ori-ce"
             ref={contentRef}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={() => {
+              focusedRef.current = true;
+              requestCaretUpdateRef.current();
+            }}
+            onBlur={() => {
+              focusedRef.current = false;
+              const caret = caretRef.current;
+              if (caret) caret.style.visibility = "hidden";
+            }}
             suppressContentEditableWarning
           />
-          {showCaret && caret ? (
+          {!readOnly ? (
             <div
+              ref={caretRef}
               className="ori-caret"
-              style={{ position: "absolute", left: caret.x, top: caret.y, height: caret.h, pointerEvents: "none" }}
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                height: 18,
+                pointerEvents: "none",
+                transform: "translate3d(0, 0, 0)",
+                visibility: "hidden",
+              }}
               aria-hidden
             />
           ) : null}

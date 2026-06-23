@@ -53,6 +53,14 @@ describe("Virtualizer", () => {
     expect(v.totalHeight()).toBe(70);
   });
 
+  it("setOrder prunes removed heights even when the block count is unchanged", () => {
+    const v = make();
+    v.setOrder(["x", "y", "z", "q", "r"]);
+    expect(v.indexOf("a")).toBe(-1);
+    expect(v.indexOf("z")).toBe(2);
+    expect(v.totalHeight()).toBe(100);
+  });
+
   it("an empty virtualizer yields an empty window", () => {
     const v = new Virtualizer(20);
     const w = v.window(0, 100);

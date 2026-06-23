@@ -24,6 +24,7 @@ export interface VirtualWindow {
 
 export class Virtualizer {
   private order: string[] = [];
+  private indexById = new Map<string, number>();
   private heights = new Map<string, number>();
   /** Prefix offsets: `tops[i]` is the top of block `i`; `tops[n]` is total. */
   private tops: number[] = [0];
@@ -36,11 +37,16 @@ export class Virtualizer {
 
   setOrder(ids: string[]): void {
     this.order = ids;
+    this.indexById.clear();
+    const live = new Set<string>();
+    ids.forEach((id, index) => {
+      this.indexById.set(id, index);
+      live.add(id);
+    });
     // Drop heights for blocks that no longer exist.
-    if (this.heights.size > ids.length) {
-      const live = new Set(ids);
-      for (const id of this.heights.keys()) {
-        if (!live.has(id)) this.heights.delete(id);
+    for (const id of this.heights.keys()) {
+      if (!live.has(id)) {
+        this.heights.delete(id);
       }
     }
     this.dirty = true;
@@ -55,7 +61,7 @@ export class Virtualizer {
   }
 
   indexOf(id: string): number {
-    return this.order.indexOf(id);
+    return this.indexById.get(id) ?? -1;
   }
 
   /** Returns true when the height actually changed. */
@@ -93,7 +99,7 @@ export class Virtualizer {
 
   topOf(id: string): number {
     this.ensure();
-    const i = this.order.indexOf(id);
+    const i = this.indexOf(id);
     return i < 0 ? 0 : this.tops[i];
   }
 

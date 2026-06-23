@@ -56,6 +56,21 @@ describe("EditorController", () => {
     unsub();
   });
 
+  it("coalesces subscriber notifications during a batch", () => {
+    const { ed, firstId } = make(["a"]);
+    let calls = 0;
+    const unsub = ed.subscribe(() => {
+      calls += 1;
+    });
+    ed.batch(() => {
+      ed.setSelection(at(firstId, 1));
+      ed.insertText("b");
+    });
+    expect(ed.getBlockText(firstId)).toBe("ab");
+    expect(calls).toBe(1);
+    unsub();
+  });
+
   it("undo / redo", () => {
     const { ed, firstId } = make([""]);
     ed.setSelection(at(firstId, 0));

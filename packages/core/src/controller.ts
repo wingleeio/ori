@@ -164,7 +164,6 @@ export class EditorController {
   private versions = new Map<string, number>();
   private contentHeights = new Map<string, number>();
   private blockMap = new Map<string, BlockMap>();
-  private textIndex = new Map<Y.Text, string>();
 
   private viewport = { scrollTop: 0, viewportHeight: 0 };
   /** Accumulated scroll compensation (px) from measurement; the host drains it
@@ -176,6 +175,9 @@ export class EditorController {
 
   private revision = 0;
   private cachedSnapshot: EditorSnapshot | null = null;
+  private batchDepth = 0;
+  private pendingNotify = false;
+  private pendingMeasureCursor = 0;
   private deepHandler: (events: Array<Y.YEvent<any>>) => void;
   private undoManager!: Y.UndoManager;
   private connected = false;
@@ -240,10 +242,33 @@ export class EditorController {
     return this.cachedSnapshot;
   };
 
-  private notify(): void {
+  private emitNow(): void {
     this.cachedSnapshot = null;
     this.revision += 1;
     this.emitter.emit();
+  }
+
+  private notify(): void {
+    this.cachedSnapshot = null;
+    if (this.batchDepth > 0) {
+      this.pendingNotify = true;
+      return;
+    }
+    this.emitNow();
+  }
+
+  /** Coalesce multiple internal mutations into a single subscriber update. */
+  batch<T>(fn: () => T): T {
+    this.batchDepth += 1;
+    try {
+      return fn();
+    } finally {
+      this.batchDepth -= 1;
+      if (this.batchDepth === 0 && this.pendingNotify) {
+        this.pendingNotify = false;
+        this.emitNow();
+      }
+    }
   }
 
   /**
@@ -382,7 +407,6 @@ export class EditorController {
     const ids: string[] = [];
     const live = new Set<string>();
     this.blockMap.clear();
-    this.textIndex.clear();
 
     for (let i = 0; i < this.blocks.length; i += 1) {
       const block = this.blocks.get(i);
@@ -390,11 +414,11 @@ export class EditorController {
       ids.push(id);
       live.add(id);
       this.blockMap.set(id, block);
-      this.textIndex.set(blockText(block), id);
       if (!this.versions.has(id)) this.versions.set(id, 1);
     }
 
     this.virtualizer.setOrder(ids);
+    this.pendingMeasureCursor = 0;
     this.cache.retain(live);
 
     // Re-apply the slot height for blocks we've already measured so a reorder
@@ -486,20 +510,11 @@ export class EditorController {
         structural = true;
         continue;
       }
-      // A block's own text has a fast path via the text→id index.
-      if (target instanceof Y.Text) {
-        const id = this.textIndex.get(target);
-        if (id) {
-          changed.add(id);
-          continue;
-        }
-      }
-      // Anything else nested in a block (its `attrs`, or a Y.Map / Y.Array /
-      // Y.Text nested arbitrarily deep within) reports that inner type as the
-      // target; walk up to the OWNING BLOCK — the Y.Map that is a direct child of
-      // the blocks array — so it re-measures/re-renders. (Keying on the first
-      // nested map with an "id" would stop at a nested entity's own id, not the
-      // block's.)
+      // A block's own text, its `attrs`, or a Y.Map / Y.Array / Y.Text nested
+      // arbitrarily deep within reports that inner type as the target; walk up to
+      // the OWNING BLOCK — the Y.Map that is a direct child of the blocks array —
+      // so it re-measures/re-renders. (Keying on the first nested map with an
+      // "id" would stop at a nested entity's own id, not the block's.)
       let node: unknown = target;
       while (node instanceof Y.AbstractType) {
         if (node.parent === this.blocks && node instanceof Y.Map) {
@@ -534,6 +549,7 @@ export class EditorController {
   setWidth(width: number): void {
     if (width === this.width || width <= 0) return;
     this.width = width;
+    this.pendingMeasureCursor = 0;
     // Every cached height is stale at the new width; drop the cache and
     // re-measure lazily. Off-screen blocks keep their prior height as an
     // estimate until they scroll back into the window.
@@ -611,18 +627,30 @@ export class EditorController {
    */
   measurePending(budget = 200): boolean {
     if (this.width <= 0) return false;
+    const order = this.virtualizer.getOrder();
+    const count = order.length;
+    if (count === 0) return false;
     let measured = 0;
     let more = false;
     this.withScrollAnchor(() => {
-      for (const id of this.virtualizer.getOrder()) {
-        if (this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))) continue;
-        if (measured >= budget) {
-          more = true;
-          return;
+      let scanned = 0;
+      let i = Math.min(this.pendingMeasureCursor, count - 1);
+      while (scanned < count) {
+        const current = i;
+        const id = order[current];
+        if (!this.cache.isValid(id, this.versions.get(id) ?? 1, this.width, this.tKeyFor(id))) {
+          if (measured >= budget) {
+            more = true;
+            i = current;
+            break;
+          }
+          this.measure(id);
+          measured += 1;
         }
-        this.measure(id);
-        measured += 1;
+        i = (current + 1) % count;
+        scanned += 1;
       }
+      this.pendingMeasureCursor = i;
     });
     if (measured > 0) this.notify();
     return more;
@@ -632,6 +660,7 @@ export class EditorController {
     this.typography = typography;
     this.measurer.clear?.();
     this.cache.clear();
+    this.pendingMeasureCursor = 0;
     for (const id of this.virtualizer.getOrder()) this.measure(id);
     this.notify();
   }
@@ -644,6 +673,7 @@ export class EditorController {
   invalidateMeasurements(): void {
     this.measurer.clear?.();
     this.cache.clear();
+    this.pendingMeasureCursor = 0;
     for (const id of this.virtualizer.getOrder()) this.measure(id);
     this.notify();
   }
@@ -739,8 +769,7 @@ export class EditorController {
   /** The current selection ordered `{ start, end }` in document order, or null. */
   orderedSelection(): { start: Position; end: Position } | null {
     if (!this.selection) return null;
-    const order = this.virtualizer.getOrder();
-    return orderedRange(this.selection, (id) => order.indexOf(id));
+    return orderedRange(this.selection, this.indexOf);
   }
 
   setSelection(sel: Selection | null, opts?: { keepPreferredX?: boolean }): void {
