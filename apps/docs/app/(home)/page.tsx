@@ -178,9 +178,9 @@ export default function HomePage() {
             Stays fast as documents grow.
           </h2>
           <p className="mt-3 max-w-2xl text-fd-muted-foreground">
-            The same document loaded into ori and five other editors, then typed into. ori renders
-            only the visible viewport and only re-renders the block you&apos;re editing — so load time
-            stays low and typing stays flat as the document grows.
+            The same document loaded into ori and four other rich-text editors, then typed into. ori
+            renders only the visible viewport and only re-renders the block you&apos;re editing — so load
+            time stays low and typing stays flat as the document grows.
           </p>
           <div className="mt-10">
             <BenchCharts />
