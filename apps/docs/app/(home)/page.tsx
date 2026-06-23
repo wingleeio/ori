@@ -175,12 +175,12 @@ export default function HomePage() {
             benchmark
           </p>
           <h2 className="ff-display text-3xl tracking-tight text-fd-foreground sm:text-4xl">
-            Loads fast as documents grow.
+            Stays fast as documents grow.
           </h2>
           <p className="mt-3 max-w-2xl text-fd-muted-foreground">
-            The same document loaded into ori and five other editors. ori renders only the visible
-            viewport, so it scales far better than the editors that render every block. The numbers
-            measure load — not editing speed.
+            The same document loaded into ori and five other editors, then typed into. ori renders
+            only the visible viewport and only re-renders the block you&apos;re editing — so both
+            loading and typing scale far better than editors that touch the whole document.
           </p>
           <div className="mt-10">
             <BenchCharts />

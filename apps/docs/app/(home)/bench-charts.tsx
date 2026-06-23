@@ -57,7 +57,9 @@ function MetricChart({
   played: boolean;
 }) {
   const series = BENCH_SERIES.map((s) => ({ ...s, vals: values(s) }));
-  const visibleMax = Math.max(...series.filter((s) => !hidden.has(s.id)).flatMap((s) => s.vals), 1);
+  // Floor is tiny (just avoids a 0 scale) so the sub-millisecond typing chart can
+  // zoom in when the slow series are toggled off.
+  const visibleMax = Math.max(...series.filter((s) => !hidden.has(s.id)).flatMap((s) => s.vals), 0.01);
   const { niceMax, step } = niceScale(visibleMax);
   const animMax = useTween(niceMax);
 
@@ -224,6 +226,9 @@ export function BenchCharts() {
         </span>
       </div>
 
+      <p className="ff-mono mb-4 text-[11px] uppercase tracking-[0.16em] text-fd-foreground">
+        Loading
+      </p>
       <div className="grid gap-x-10 gap-y-8 md:grid-cols-2">
         <div>
           <MetricChart
@@ -256,11 +261,38 @@ export function BenchCharts() {
         </div>
       </div>
 
-      <p className="ff-mono mt-7 text-[11px] leading-relaxed text-fd-muted-foreground/70">
-        {BENCH_ENV}. Load time only — mount + layout of the same document (paint excluded). This is
-        not editing or scroll latency, where CodeMirror&apos;s mature imperative core is hard to beat
-        (it powers Obsidian&apos;s rich-text editor). Here CodeMirror renders plain text; ori is a
-        rich block editor with built-in CRDT collaboration. Reproduce with{" "}
+      <p className="ff-mono mb-4 mt-12 text-[11px] uppercase tracking-[0.16em] text-fd-foreground">
+        Typing
+      </p>
+      <div className="grid gap-x-10 gap-y-6 md:grid-cols-2 md:items-center">
+        <MetricChart
+          title="Scripting time per keystroke (ms)"
+          values={(s) => s.editMs}
+          format={(v) => `${Math.round(v * 10) / 10}`}
+          hidden={hidden}
+          played={played}
+        />
+        <div className="text-sm text-fd-muted-foreground">
+          <p>
+            Here virtualization pays off for ori: typing only re-renders the block you&apos;re in, so
+            it stays flat at <span className="text-fd-foreground">~0.3ms/keystroke</span> whether the
+            note has 100 or 5,000 blocks.
+          </p>
+          <p className="mt-3">
+            CodeMirror and Lexical are a touch faster; TipTap and Quill creep up. Slate re-renders the
+            whole document on every keystroke — <span className="text-fd-foreground">~25ms at 5,000
+            blocks</span>, where typing visibly lags. Toggle the others off to compare the fast ones.
+          </p>
+        </div>
+      </div>
+
+      <p className="ff-mono mt-9 text-[11px] leading-relaxed text-fd-muted-foreground/70">
+        {BENCH_ENV}. <span className="text-fd-muted-foreground">Loading:</span> main-thread time to
+        mount + lay out the document (paint excluded).{" "}
+        <span className="text-fd-muted-foreground">Typing:</span> main-thread scripting time per
+        keystroke (beforeinput + input handlers), typing real characters — lower is snappier.
+        CodeMirror renders plain text here (it also powers Obsidian&apos;s rich text); ori is a rich
+        block editor with built-in CRDT collaboration. Absolute ms vary by machine. Reproduce with{" "}
         <code className="text-fd-muted-foreground">apps/bench</code>.
       </p>
     </div>
