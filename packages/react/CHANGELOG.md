@@ -1,5 +1,14 @@
 # @wingleeio/ori-react
 
+## 0.3.10
+
+### Patch Changes
+
+- c62263b: Build the contentEditable view in a layout effect (seeded with the real width on first mount) so the document paints a frame sooner — no flash of an empty editor. Background measurement still restarts correctly when width changes on a later re-render.
+- 8b36ed1: Improve editor responsiveness on the native typing path: keep plain keystrokes free of pre-paint model notifications, apply known native edits directly to the Y.Doc, move the custom caret imperatively with transforms, and speed up block/virtualizer lookups used by selection and measurement.
+- Updated dependencies [8b36ed1]
+  - @wingleeio/ori-core@0.3.4
+
 ## 0.3.9
 
 ### Patch Changes
