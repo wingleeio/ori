@@ -1,5 +1,16 @@
 # @wingleeio/ori-react
 
+## 0.4.0
+
+### Minor Changes
+
+- 34b4390: Add built-in bullet and ordered list blocks with nested levels, keyboard indent/outdent behavior, matching React rendering, and clipboard round-tripping.
+
+### Patch Changes
+
+- Updated dependencies [34b4390]
+  - @wingleeio/ori-core@0.4.0
+
 ## 0.3.10
 
 ### Patch Changes
