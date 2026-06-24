@@ -9,6 +9,8 @@ import {
   Code2,
   Heading1,
   Italic,
+  List,
+  ListOrdered,
   Pilcrow,
   Quote,
 } from "lucide-react";
@@ -42,6 +44,8 @@ const SLASH: SlashCommand[] = [
   { id: "text", label: "Text", hint: "Plain paragraph", icon: Pilcrow, keywords: ["text", "paragraph", "p"], run: (e) => e.setBlockTypeAtSelection("paragraph") },
   { id: "heading", label: "Heading", hint: "Section title", icon: Heading1, keywords: ["heading", "title", "h1"], run: (e) => e.setBlockTypeAtSelection("heading") },
   { id: "quote", label: "Quote", hint: "Callout", icon: Quote, keywords: ["quote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
+  { id: "bullet-list", label: "Bullet list", hint: "Bulleted item", icon: List, keywords: ["bullet", "list", "ul"], run: (e) => e.setBlockTypeAtSelection("bullet-list") },
+  { id: "ordered-list", label: "Numbered list", hint: "Numbered item", icon: ListOrdered, keywords: ["number", "ordered", "list", "ol"], run: (e) => e.setBlockTypeAtSelection("ordered-list") },
   { id: "code", label: "Code block", hint: "Monospace block", icon: Code2, keywords: ["code", "snippet", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
   { id: "bold", label: "Bold", hint: "Toggle bold", icon: Bold, keywords: ["bold", "b"], run: (e) => e.toggleMark("bold") },
   { id: "italic", label: "Italic", hint: "Toggle italic", icon: Italic, keywords: ["italic", "i"], run: (e) => e.toggleMark("italic") },
@@ -272,6 +276,8 @@ const BLOCKS: { type: BlockType; label: string }[] = [
   { type: "paragraph", label: "Text" },
   { type: "heading", label: "Heading" },
   { type: "quote", label: "Quote" },
+  { type: "bullet-list", label: "Bullet" },
+  { type: "ordered-list", label: "Numbered" },
   { type: "code", label: "Code" },
 ];
 

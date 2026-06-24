@@ -1,4 +1,11 @@
-import type { BlockType, InlineItem, Marks } from "@wingleeio/ori-core";
+import {
+  isListBlockType,
+  LIST_NEST_STEP_PX,
+  normalizeListLevel,
+  type BlockType,
+  type InlineItem,
+  type Marks,
+} from "@wingleeio/ori-core";
 
 /**
  * Clipboard (de)serialization for the contentEditable view. Copy writes three
@@ -54,15 +61,43 @@ function runHtml(it: InlineItem): string {
 
 const BLOCK_TAG: Record<string, string> = { heading: "h2", quote: "blockquote", code: "pre" };
 
+function listLevel(attrs?: Record<string, unknown>): number {
+  return normalizeListLevel(attrs?.level);
+}
+
+function listOrdinal(blocks: ClipBlock[], index: number): number {
+  const block = blocks[index];
+  if (block.type !== "ordered-list") return 1;
+  const level = listLevel(block.attrs);
+  let ordinal = 1;
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const prev = blocks[i];
+    const prevLevel = listLevel(prev.attrs);
+    if (!isListBlockType(prev.type)) break;
+    if (prevLevel < level) break;
+    if (prevLevel === level && prev.type !== "ordered-list") break;
+    if (prevLevel === level) ordinal += 1;
+  }
+  return ordinal;
+}
+
+function blockHtml(blocks: ClipBlock[], index: number): string {
+  const b = blocks[index];
+  const body = b.items.map(runHtml).join("") || "<br>";
+  if (isListBlockType(b.type)) {
+    const tag = b.type === "ordered-list" ? "ol" : "ul";
+    const level = listLevel(b.attrs);
+    const value = b.type === "ordered-list" ? ` value="${listOrdinal(blocks, index)}"` : "";
+    return `<${tag}><li data-ori-list-level="${level}"${value} style="margin-left:${level * LIST_NEST_STEP_PX}px">${body}</li></${tag}>`;
+  }
+  const tag = BLOCK_TAG[b.type] ?? "p";
+  return `<${tag}>${body}</${tag}>`;
+}
+
 /** Build the three clipboard payloads for a block-grouped selection. */
 export function serializeSelection(blocks: ClipBlock[]): { text: string; html: string; json: string } {
   const text = blocks.map((b) => blockPlain(b.items)).join("\n");
-  const html = blocks
-    .map((b) => {
-      const tag = BLOCK_TAG[b.type] ?? "p";
-      return `<${tag}>${b.items.map(runHtml).join("") || "<br>"}</${tag}>`;
-    })
-    .join("");
+  const html = blocks.map((_, i) => blockHtml(blocks, i)).join("");
   const json = JSON.stringify({
     v: 2,
     blocks: blocks.map((b) => ({
@@ -119,7 +154,19 @@ export function textToBlocks(text: string): ClipBlock[] {
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => ({ type: "paragraph" as BlockType, items: line ? [{ text: line, start: 0 }] : [] }));
+    .map((line) => {
+      const m = line.match(/^([ \t]*)(?:([-*+])|(\d+)[.)])\s+(.*)$/);
+      if (m) {
+        const spaces = m[1].replace(/\t/g, "  ").length;
+        const type = m[3] ? "ordered-list" : "bullet-list";
+        return {
+          type: type as BlockType,
+          attrs: { level: normalizeListLevel(Math.floor(spaces / 2)) },
+          items: m[4] ? [{ text: m[4], start: 0 }] : [],
+        };
+      }
+      return { type: "paragraph" as BlockType, items: line ? [{ text: line, start: 0 }] : [] };
+    });
 }
 
 function blockTypeForTag(tag: string): BlockType {
@@ -136,19 +183,21 @@ export function htmlToBlocks(html: string): ClipBlock[] {
   const blocks: ClipBlock[] = [];
   let cur: InlineItem[] = [];
   let curType: BlockType = "paragraph";
+  let curAttrs: Record<string, unknown> | undefined;
   const flush = () => {
-    blocks.push({ type: curType, items: cur });
+    blocks.push({ type: curType, items: cur, ...(curAttrs ? { attrs: curAttrs } : {}) });
     cur = [];
     curType = "paragraph";
+    curAttrs = undefined;
   };
   const push = (text: string, marks: Marks) => {
     if (!text) return;
     cur.push({ text, start: 0, marks: Object.keys(marks).length ? { ...marks } : undefined });
   };
   const BLOCK = new Set([
-    "P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "SECTION", "ARTICLE", "UL", "OL",
+    "P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "SECTION", "ARTICLE",
   ]);
-  const walk = (node: Node, marks: Marks, pre: boolean) => {
+  const walk = (node: Node, marks: Marks, pre: boolean, list?: { type: BlockType; level: number }) => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
         // Preserve whitespace (indentation, newlines) inside <pre> so pasted
@@ -173,11 +222,27 @@ export function htmlToBlocks(html: string): ClipBlock[] {
       if (tag === "CODE" || tag === "KBD" || tag === "TT") m.code = true;
       const href = tag === "A" ? el.getAttribute("href") : null;
       if (href) m.link = href;
-      const isBlock = BLOCK.has(tag);
+      if (tag === "UL" || tag === "OL") {
+        if (cur.length) flush();
+        const type = (tag === "OL" ? "ordered-list" : "bullet-list") as BlockType;
+        walk(el, m, pre, { type, level: list ? list.level + 1 : 0 });
+        continue;
+      }
+      const isListItem = tag === "LI" && list != null;
+      const isBlock = isListItem || (!list && BLOCK.has(tag));
       if (isBlock && cur.length) flush();
-      if (isBlock) curType = blockTypeForTag(tag);
-      walk(el, m, pre || tag === "PRE");
-      if (isBlock) flush();
+      const blockCountBefore = blocks.length;
+      if (isListItem && list) {
+        const raw = el.getAttribute("data-ori-list-level");
+        const level = raw != null && raw !== "" ? normalizeListLevel(Number(raw)) : normalizeListLevel(list.level);
+        curType = list.type;
+        curAttrs = { level };
+        walk(el, m, pre, { ...list, level });
+      } else {
+        if (isBlock) curType = blockTypeForTag(tag);
+        walk(el, m, pre || tag === "PRE", list);
+      }
+      if (isBlock && (cur.length || blocks.length === blockCountBefore)) flush();
     }
   };
   walk(doc.body, {}, false);

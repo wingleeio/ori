@@ -1,7 +1,14 @@
 import * as Y from "yjs";
 
 /** The built-in block kinds. */
-export type BuiltinBlockType = "paragraph" | "heading" | "quote" | "code";
+export type BuiltinBlockType =
+  | "paragraph"
+  | "heading"
+  | "quote"
+  | "code"
+  | "bullet-list"
+  | "ordered-list";
+export type ListBlockType = "bullet-list" | "ordered-list";
 
 /**
  * A block's `type`. Open to any string so hosts can register custom node types
@@ -21,6 +28,10 @@ export type BlockArray = Y.Array<Y.Map<unknown>>;
 export type BlockMap = Y.Map<unknown>;
 
 const BLOCKS_KEY = "blocks";
+export const MAX_LIST_LEVEL = 7;
+export const LIST_LEVEL_ATTR = "level";
+export const LIST_MARKER_GUTTER_PX = 28;
+export const LIST_NEST_STEP_PX = 24;
 
 export function getBlocks(doc: Y.Doc): BlockArray {
   return doc.getArray<Y.Map<unknown>>(BLOCKS_KEY);
@@ -43,6 +54,23 @@ export function blockType(block: BlockMap): BlockType {
   return (block.get("type") as BlockType | undefined) ?? "paragraph";
 }
 
+export function isListBlockType(type: BlockType): type is ListBlockType {
+  return type === "bullet-list" || type === "ordered-list";
+}
+
+export function normalizeListLevel(value: unknown): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
+  return Math.max(0, Math.min(MAX_LIST_LEVEL, n));
+}
+
+export function blockListLevel(block: BlockMap): number {
+  return normalizeListLevel(blockAttrs(block)[LIST_LEVEL_ATTR]);
+}
+
+export function listInsetLeft(level: number): number {
+  return LIST_MARKER_GUTTER_PX + normalizeListLevel(level) * LIST_NEST_STEP_PX;
+}
+
 export function blockText(block: BlockMap): Y.Text {
   return block.get("text") as Y.Text;
 }
@@ -59,6 +87,7 @@ export function createBlock(
   type: BlockType = "paragraph",
   text = "",
   id: string = genId(),
+  attrs?: Record<string, unknown>,
 ): BlockMap {
   const map = new Y.Map<unknown>();
   map.set("id", id);
@@ -66,19 +95,23 @@ export function createBlock(
   const ytext = new Y.Text();
   if (text.length > 0) ytext.insert(0, text);
   map.set("text", ytext);
-  map.set("attrs", new Y.Map<unknown>());
+  const attrMap = new Y.Map<unknown>();
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
+  }
+  map.set("attrs", attrMap);
   return map;
 }
 
 /** Create a fresh note `Y.Doc` seeded with the given blocks (or one empty paragraph). */
 export function createNoteDoc(
-  initial?: Array<{ type?: BlockType; text: string }>,
+  initial?: Array<{ type?: BlockType; text: string; attrs?: Record<string, unknown> }>,
 ): Y.Doc {
   const doc = new Y.Doc();
   const blocks = getBlocks(doc);
   const seed = initial && initial.length > 0 ? initial : [{ text: "" }];
   doc.transact(() => {
-    blocks.push(seed.map((b) => createBlock(b.type ?? "paragraph", b.text)));
+    blocks.push(seed.map((b) => createBlock(b.type ?? "paragraph", b.text, genId(), b.attrs)));
   });
   return doc;
 }

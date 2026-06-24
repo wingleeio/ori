@@ -1,4 +1,5 @@
 import type { Measurer, Typography } from "@wingleeio/ori-pretext";
+import { listInsetLeft, normalizeListLevel } from "./schema";
 
 /**
  * The extension schema. Block nodes describe how a block type is measured and
@@ -30,6 +31,13 @@ export interface BlockInset {
   left: number;
 }
 
+export interface BlockInsetContext {
+  /** The block's `attrs` as a plain object. */
+  attrs: Record<string, unknown>;
+}
+
+export type BlockInsetSpec = BlockInset | ((ctx: BlockInsetContext) => BlockInset);
+
 export interface BlockNode {
   type: string;
   /**
@@ -44,7 +52,7 @@ export interface BlockNode {
    * (defaults to the editor's blockSpacing; the first block always gets 0). */
   spacing?: number;
   /** Content inset (px) matching the block's rendered CSS padding/border. */
-  inset?: BlockInset;
+  inset?: BlockInsetSpec;
   /** Height in px for an atomic block, as a function of width + attrs. */
   measure?: (ctx: BlockMeasureContext) => number;
 }
@@ -67,6 +75,13 @@ export interface EditorSchema {
   blocks: Record<string, BlockNode>;
   atoms: Record<string, InlineAtomNode>;
 }
+
+const listInset = ({ attrs }: BlockInsetContext): BlockInset => ({
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: listInsetLeft(normalizeListLevel(attrs.level)),
+});
 
 /** Built-in editable-text block nodes. */
 export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
@@ -105,6 +120,8 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
       lineHeight: 1.7,
     }),
   },
+  "bullet-list": { type: "bullet-list", text: true, spacing: 4, inset: listInset },
+  "ordered-list": { type: "ordered-list", text: true, spacing: 4, inset: listInset },
 };
 
 export const DEFAULT_SCHEMA: EditorSchema = { blocks: DEFAULT_BLOCKS, atoms: {} };

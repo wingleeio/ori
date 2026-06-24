@@ -3,8 +3,15 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BLOCKS, createSchema } from "./nodes";
 
 describe("nodes / schema", () => {
-  it("DEFAULT_BLOCKS contains the four built-in text nodes", () => {
-    expect(Object.keys(DEFAULT_BLOCKS).sort()).toEqual(["code", "heading", "paragraph", "quote"]);
+  it("DEFAULT_BLOCKS contains the built-in text nodes", () => {
+    expect(Object.keys(DEFAULT_BLOCKS).sort()).toEqual([
+      "bullet-list",
+      "code",
+      "heading",
+      "ordered-list",
+      "paragraph",
+      "quote",
+    ]);
     expect(Object.values(DEFAULT_BLOCKS).every((n) => n.text)).toBe(true);
   });
 

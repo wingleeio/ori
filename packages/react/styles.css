@@ -127,6 +127,26 @@
   padding: 8px 12px;
 }
 
+.ori-ce .ori-block-bullet-list,
+.ori-ce .ori-block-ordered-list {
+  /* Padding is mirrored by the list node inset: 28px marker gutter + 24px per
+     level. Keep these values in sync with LIST_* constants in @ori/core. */
+  position: relative;
+  padding-inline-start: var(--ori-list-padding-left, 28px);
+}
+.ori-ce .ori-block-bullet-list::before,
+.ori-ce .ori-block-ordered-list::before {
+  content: var(--ori-list-marker, "\2022");
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: calc(var(--ori-list-padding-left, 28px) - var(--ori-list-marker-gutter, 28px));
+  width: 20px;
+  color: var(--ori-list-marker-color, currentColor);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
 .ori-line {
   position: relative;
 }

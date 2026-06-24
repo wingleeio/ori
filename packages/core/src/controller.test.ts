@@ -442,6 +442,60 @@ describe("EditorController", () => {
       expect([x, y, z].map((id) => ed.getBlockType(id))).toEqual(["heading", "heading", "heading"]);
     });
 
+    it("converts selected blocks to list items and adjusts nesting", () => {
+      const { ed } = make(["a", "b", "c"]);
+      const [x, y, z] = ed.blockIds();
+      ed.setSelection({ anchor: { blockId: y, offset: 0 }, focus: { blockId: z, offset: 1 } });
+      ed.setBlockTypeAtSelection("bullet-list");
+      expect([x, y, z].map((id) => ed.getBlockType(id))).toEqual(["paragraph", "bullet-list", "bullet-list"]);
+      expect([y, z].map((id) => ed.getBlockAttrs(id).level)).toEqual([0, 0]);
+      expect(ed.increaseListLevelAtSelection()).toBe(true);
+      expect([y, z].map((id) => ed.getListLevel(id))).toEqual([1, 1]);
+      ed.setBlockTypeAtSelection("paragraph");
+      expect(ed.getBlockAttrs(y).level).toBeUndefined();
+    });
+
+    it("continues, outdents, then exits an empty list item with Enter", () => {
+      const doc = createNoteDoc([{ type: "bullet-list", text: "item", attrs: { level: 1 } }]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      const [first] = ed.blockIds();
+      ed.setSelection(at(first, 4));
+      ed.insertParagraphBreak();
+      const second = ed.blockIds()[1];
+      expect(ed.getBlockType(second)).toBe("bullet-list");
+      expect(ed.getListLevel(second)).toBe(1);
+      ed.insertParagraphBreak();
+      expect(ed.getBlockType(second)).toBe("bullet-list");
+      expect(ed.getListLevel(second)).toBe(0);
+      ed.insertParagraphBreak();
+      expect(ed.getBlockType(second)).toBe("paragraph");
+    });
+
+    it("Backspace at the start of a list item lifts then unwraps it", () => {
+      const doc = createNoteDoc([{ type: "ordered-list", text: "item", attrs: { level: 1 } }]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      const [id] = ed.blockIds();
+      ed.setSelection(at(id, 0));
+      ed.deleteBackward();
+      expect(ed.getBlockType(id)).toBe("ordered-list");
+      expect(ed.getListLevel(id)).toBe(0);
+      ed.deleteBackward();
+      expect(ed.getBlockType(id)).toBe("paragraph");
+      expect(ed.getBlockText(id)).toBe("item");
+    });
+
+    it("numbers ordered-list siblings across nested children", () => {
+      const doc = createNoteDoc([
+        { type: "ordered-list", text: "one" },
+        { type: "ordered-list", text: "two" },
+        { type: "ordered-list", text: "nested one", attrs: { level: 1 } },
+        { type: "ordered-list", text: "nested two", attrs: { level: 1 } },
+        { type: "ordered-list", text: "three" },
+      ]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      expect(ed.blockIds().map((id) => ed.getListOrdinal(id))).toEqual([1, 2, 1, 2, 3]);
+    });
+
     it("a block's inset adds its vertical padding to the measured height", () => {
       const { ed } = make(["x"]);
       const [id] = ed.blockIds();

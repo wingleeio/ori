@@ -10,10 +10,14 @@ interface Run {
   embed?: Record<string, unknown>;
 }
 
-function addBlock(doc: Y.Doc, type: BlockType, runs: Run[]): void {
+function addBlock(doc: Y.Doc, type: BlockType, runs: Run[], attrs?: Record<string, unknown>): void {
   const blocks = getBlocks(doc);
   const block = createBlock(type);
   blocks.push([block]);
+  if (attrs) {
+    const attrMap = block.get("attrs") as Y.Map<unknown>;
+    for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
+  }
   const text = block.get("text") as Y.Text;
   let at = 0;
   for (const run of runs) {
@@ -64,6 +68,10 @@ export function welcomeDoc(): Y.Doc {
       { text: "⌥ ↑/↓", marks: { bold: true } },
       { text: " (Option/Alt + arrows) to jump between notes — handy for feeling how fast long notes load." },
     ]);
+    addBlock(doc, "bullet-list", [{ text: "Local edits land as Yjs operations." }]);
+    addBlock(doc, "bullet-list", [{ text: "Nested items keep their own measured gutter." }], { level: 1 });
+    addBlock(doc, "ordered-list", [{ text: "Numbered siblings continue across nested children." }]);
+    addBlock(doc, "ordered-list", [{ text: "Clipboard payloads carry list levels with the text." }], { level: 1 });
     addBlock(doc, "quote", [
       {
         text:

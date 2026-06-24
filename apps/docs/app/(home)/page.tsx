@@ -51,6 +51,16 @@ function EditorMock() {
               <span className="mock-sel">marks live in its attributes</span>, and{" "}
               <span className="mock-chip">@ada</span> reviewed it before dawn.
             </p>
+            <div className="mt-4 space-y-1.5 text-[15px] text-fd-foreground/90">
+              <p className="flex gap-2">
+                <span className="w-5 text-right text-fd-primary">•</span>
+                <span>List items measure their own marker gutter.</span>
+              </p>
+              <p className="flex gap-2 pl-6">
+                <span className="w-5 text-right text-fd-primary">◦</span>
+                <span>Nested items wrap against the same Pretext layout.</span>
+              </p>
+            </div>
             <div className="my-5 h-px bg-fd-border" />
             <p className="text-[15px] text-fd-foreground/90">
               Every measured line wraps from Pretext, never the browser
@@ -158,8 +168,8 @@ export default function HomePage() {
           <p className="mt-3 max-w-xl text-fd-muted-foreground">
             A full <code className="ff-mono text-sm text-fd-primary">@wingleeio/ori-react</code>{" "}
             editor, running right here in the page. Type, drag to select for the formatting menu, or
-            press <kbd className="ff-mono">/</kbd> for blocks and <kbd className="ff-mono">@</kbd> to
-            mention.
+            press <kbd className="ff-mono">/</kbd> for blocks like <span className="text-fd-foreground">Bullet list</span>{" "}
+            and <span className="text-fd-foreground">Numbered list</span>. Press <kbd className="ff-mono">@</kbd> to mention.
           </p>
           <div className="mt-8">
             <LiveEditor />

@@ -176,6 +176,23 @@ describe("EditorView input routing (beforeinput)", () => {
     expect(sel.focus.offset).toBe(editor.getBlockText(ids[1]).length);
   });
 
+  it("Tab and Shift+Tab change a list item's nesting level", () => {
+    const doc = createNoteDoc([{ type: "bullet-list", text: "item" }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const id = blockId(getBlocks(doc).get(0));
+    const { container } = render(<NoteEditor editor={editor} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    caretDom(ce, 0, 0);
+    ce.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    expect(editor.getListLevel(id)).toBe(1);
+    const block = ce.querySelector("[data-block-id]") as HTMLElement;
+    expect(block.style.getPropertyValue("--ori-list-padding-left")).toBe("52px");
+    ce.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+    expect(editor.getListLevel(id)).toBe(0);
+  });
+
   it("Cmd+Z undoes / Cmd+Shift+Z redoes the last edit", () => {
     const { ce, editor, ids } = setup(["abc"]);
     editor.setSelection({ anchor: { blockId: ids[0], offset: 3 }, focus: { blockId: ids[0], offset: 3 } });

@@ -1,7 +1,15 @@
 import * as Y from "yjs";
 import { normalizeAttributes } from "./delta";
 import type { BlockArray, BlockType } from "./schema";
-import { blockText, blockType, createBlock, genId, blockId as readId } from "./schema";
+import {
+  blockAttrs,
+  blockText,
+  blockType,
+  createBlock,
+  genId,
+  isListBlockType,
+  blockId as readId,
+} from "./schema";
 import { position, type Position } from "./selection";
 
 interface DeltaOp {
@@ -118,13 +126,14 @@ export function splitBlock(
   const hit = find(blocks, blockId);
   if (!hit) return position(blockId, offset);
 
-  // Headings/quotes continue as paragraphs; code stays code.
+  // Headings/quotes continue as paragraphs; code and list items continue.
   const type = hit.block.get("type") as BlockType;
-  const nextType: BlockType = type === "code" ? "code" : "paragraph";
+  const nextType: BlockType = type === "code" || isListBlockType(type) ? type : "paragraph";
+  const nextAttrs = isListBlockType(type) ? blockAttrs(hit.block) : undefined;
   // Capture the id locally: a not-yet-integrated Y.Map returns undefined from
   // .get(), so we must not read the id back off the prelim block.
   const newId = genId();
-  const newBlock = createBlock(nextType, "", newId);
+  const newBlock = createBlock(nextType, "", newId, nextAttrs);
 
   doc.transact(() => {
     const text = blockText(hit.block);

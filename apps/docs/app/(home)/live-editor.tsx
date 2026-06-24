@@ -24,9 +24,13 @@ interface Run {
 function seedDoc(): Y.Doc {
   const doc = new Y.Doc();
   const blocks = getBlocks(doc);
-  const add = (type: string, runs: Run[]) => {
+  const add = (type: string, runs: Run[], attrs?: Record<string, unknown>) => {
     const block = createBlock(type);
     blocks.push([block]);
+    if (attrs) {
+      const attrMap = block.get("attrs") as Y.Map<unknown>;
+      for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
+    }
     const text = block.get("text") as Y.Text;
     let at = 0;
     for (const run of runs) {
@@ -54,10 +58,14 @@ function seedDoc(): Y.Doc {
     add("paragraph", [
       { text: "Select text for the formatting menu, or press " },
       { text: "/", marks: { code: true } },
-      { text: " for blocks and " },
+      { text: " for blocks, including bullet and numbered lists, and " },
       { text: "@", marks: { code: true } },
       { text: " to mention someone." },
     ]);
+    add("bullet-list", [{ text: "Lists are ordinary text blocks with measured gutters." }]);
+    add("bullet-list", [{ text: "Press Tab to nest the current list item." }], { level: 1 });
+    add("ordered-list", [{ text: "Ordered siblings keep numbering across nested children." }]);
+    add("ordered-list", [{ text: "Shift+Tab lifts a nested item back out." }], { level: 1 });
 
     add("heading", [{ text: "How it fits together" }]);
     add("paragraph", [

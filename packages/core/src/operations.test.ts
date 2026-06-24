@@ -10,7 +10,7 @@ import {
   setBlockType,
   splitBlock,
 } from "./operations";
-import { blockId, blockText, blockType, createNoteDoc, getBlocks } from "./schema";
+import { blockAttrs, blockId, blockText, blockType, createNoteDoc, getBlocks } from "./schema";
 import { position } from "./selection";
 
 function setup(texts: string[]) {
@@ -49,6 +49,16 @@ describe("operations", () => {
     expect(textOf(0)).toBe("he");
     expect(textOf(1)).toBe("llo");
     expect(after.offset).toBe(0);
+  });
+
+  it("splitBlock continues list items at the same nesting level", () => {
+    const doc = createNoteDoc([{ type: "bullet-list", text: "hello", attrs: { level: 2 } }]);
+    const blocks = getBlocks(doc);
+    const id = blockId(blocks.get(0));
+    splitBlock(doc, blocks, id, 2);
+    expect(blockType(blocks.get(1))).toBe("bullet-list");
+    expect(blockAttrs(blocks.get(1)).level).toBe(2);
+    expect(blockText(blocks.get(1)).toString()).toBe("llo");
   });
 
   it("mergeWithPrevious joins into the predecessor", () => {

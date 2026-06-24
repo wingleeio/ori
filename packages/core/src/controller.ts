@@ -40,11 +40,16 @@ import {
 } from "./operations";
 import {
   blockAttrs,
+  blockListLevel,
   blockText,
   blockType,
   createNoteDoc,
   getBlocks,
+  isListBlockType,
+  LIST_LEVEL_ATTR,
   blockId as readBlockId,
+  listInsetLeft,
+  normalizeListLevel,
   type BlockArray,
   type BlockMap,
   type BlockType,
@@ -369,16 +374,16 @@ export class EditorController {
       // A block's CSS padding/border (code, quote) shifts its text in. Subtract
       // the horizontal inset from the wrap width and add the vertical inset to
       // the height so wrapping and virtualized height match the rendered DOM.
-      const inset = node.inset;
+      const inset = this.insetOf(id);
       const wrapWidth =
-        this.width > 0 && inset ? Math.max(1, this.width - inset.left - inset.right) : this.width;
+        this.width > 0 ? Math.max(1, this.width - inset.left - inset.right) : this.width;
       const layout = layoutBlock(items, {
         width: wrapWidth,
         typography: this.typographyFor(id),
         measurer: this.measurer,
         detailed,
       });
-      if (inset && inset.top + inset.bottom > 0) {
+      if (inset.top + inset.bottom > 0) {
         return { ...layout, height: layout.height + inset.top + inset.bottom };
       }
       return layout;
@@ -688,7 +693,13 @@ export class EditorController {
 
   /** The block's content inset (px), or zero. */
   private insetOf(id: string): { top: number; right: number; bottom: number; left: number } {
-    return this.nodeFor(id).inset ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const inset = this.nodeFor(id).inset;
+    if (!inset) return { top: 0, right: 0, bottom: 0, left: 0 };
+    if (typeof inset === "function") {
+      const block = this.byId(id);
+      return inset({ attrs: block ? blockAttrs(block) : {} });
+    }
+    return inset;
   }
 
   /**
@@ -886,6 +897,41 @@ export class EditorController {
     return block ? blockAttrs(block) : {};
   }
 
+  /** A list item's nesting level, clamped to the supported range. */
+  getListLevel(id: string): number {
+    const block = this.byId(id);
+    return block ? blockListLevel(block) : 0;
+  }
+
+  /** The rendered left content inset for a list item at its current level. */
+  getListInsetLeft(id: string): number {
+    return listInsetLeft(this.getListLevel(id));
+  }
+
+  /**
+   * Ordered-list item number among contiguous siblings at the same level. Deeper
+   * nested items are skipped; a shallower item or non-list block starts a new
+   * sibling sequence.
+   */
+  getListOrdinal(id: string): number {
+    const block = this.byId(id);
+    if (!block || blockType(block) !== "ordered-list") return 1;
+    const level = blockListLevel(block);
+    const order = this.virtualizer.getOrder();
+    let ordinal = 1;
+    for (let i = this.indexOf(id) - 1; i >= 0; i -= 1) {
+      const prev = this.byId(order[i]);
+      if (!prev) continue;
+      const prevType = blockType(prev);
+      const prevLevel = blockListLevel(prev);
+      if (!isListBlockType(prevType)) break;
+      if (prevLevel < level) break;
+      if (prevLevel === level && prevType !== "ordered-list") break;
+      if (prevLevel === level) ordinal += 1;
+    }
+    return ordinal;
+  }
+
   /** Plain text of the current selection (blocks joined by newlines). */
   getSelectedText(): string {
     const sel = this.selection;
@@ -1051,6 +1097,17 @@ export class EditorController {
 
   insertParagraphBreak(): void {
     const startPos = this.collapsedStart();
+    const block = this.byId(startPos.blockId);
+    if (block && isListBlockType(blockType(block)) && blockText(block).length === 0) {
+      const level = blockListLevel(block);
+      if (level > 0) {
+        this.setListLevel(startPos.blockId, level - 1);
+      } else {
+        this.setBlockTypeAtSelection("paragraph");
+      }
+      this.setSelection(caret(position(startPos.blockId, 0)));
+      return;
+    }
     const after = splitBlock(this.doc, this.blocks, startPos.blockId, startPos.offset);
     this.setSelection(caret(after));
   }
@@ -1203,6 +1260,14 @@ export class EditorController {
       );
       return;
     }
+    const block = this.byId(pos.blockId);
+    if (block && pos.offset === 0 && isListBlockType(blockType(block))) {
+      const level = blockListLevel(block);
+      if (level > 0) this.setListLevel(pos.blockId, level - 1);
+      else this.setBlockTypeAtSelection("paragraph");
+      this.setSelection(caret(position(pos.blockId, 0)));
+      return;
+    }
     if (pos.offset > 0) {
       const after = deleteRange(
         this.doc,
@@ -1353,6 +1418,51 @@ export class EditorController {
     return true;
   }
 
+  private setBlockAttr(id: string, key: string, value: unknown): void {
+    const block = this.byId(id);
+    const attrMap = block?.get("attrs");
+    if (!(attrMap instanceof Y.Map)) return;
+    this.doc.transact(() => {
+      if (value === undefined) attrMap.delete(key);
+      else attrMap.set(key, value);
+    });
+  }
+
+  private setListLevel(id: string, level: number): void {
+    this.setBlockAttr(id, LIST_LEVEL_ATTR, normalizeListLevel(level));
+  }
+
+  adjustListLevelAtSelection(delta: number): boolean {
+    const sel = this.selection;
+    if (!sel || delta === 0) return false;
+    const { start, end } = orderedRange(sel, this.indexOf);
+    const order = this.virtualizer.getOrder();
+    const si = this.indexOf(start.blockId);
+    const ei = this.indexOf(end.blockId);
+    let changed = false;
+    this.doc.transact(() => {
+      for (let i = si; i <= ei; i += 1) {
+        const block = this.byId(order[i]);
+        if (!block || !isListBlockType(blockType(block))) continue;
+        const attrMap = block.get("attrs");
+        if (!(attrMap instanceof Y.Map)) continue;
+        const next = normalizeListLevel(blockListLevel(block) + delta);
+        if (next === blockListLevel(block)) continue;
+        attrMap.set("level", next);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  increaseListLevelAtSelection(): boolean {
+    return this.adjustListLevelAtSelection(1);
+  }
+
+  decreaseListLevelAtSelection(): boolean {
+    return this.adjustListLevelAtSelection(-1);
+  }
+
   setBlockTypeAtSelection(type: BlockType): void {
     const sel = this.selection;
     if (!sel) return;
@@ -1360,9 +1470,22 @@ export class EditorController {
     const order = this.virtualizer.getOrder();
     const si = this.indexOf(start.blockId);
     const ei = this.indexOf(end.blockId);
-    for (let i = si; i <= ei; i += 1) {
-      setBlockType(this.doc, this.blocks, order[i], type);
-    }
+    this.doc.transact(() => {
+      for (let i = si; i <= ei; i += 1) {
+        const block = this.byId(order[i]);
+        if (!block) continue;
+        const previous = blockType(block);
+        block.set("type", type);
+        const attrMap = block.get("attrs");
+        if (!(attrMap instanceof Y.Map)) continue;
+        if (isListBlockType(type)) {
+          const level = isListBlockType(previous) ? blockListLevel(block) : 0;
+          attrMap.set("level", normalizeListLevel(level));
+        } else {
+          attrMap.delete("level");
+        }
+      }
+    });
   }
 
   blockTypeAtSelection(): BlockType | null {

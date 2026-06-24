@@ -9,7 +9,11 @@ import {
 } from "./clipboard";
 
 const run = (text: string, marks?: InlineItem["marks"]): InlineItem => ({ text, start: 0, marks });
-const block = (type: BlockType, items: InlineItem[]): ClipBlock => ({ type, items });
+const block = (type: BlockType, items: InlineItem[], attrs?: Record<string, unknown>): ClipBlock => ({
+  type,
+  items,
+  ...(attrs ? { attrs } : {}),
+});
 
 describe("clipboard", () => {
   it("serializes marks to html + private json and round-trips them", () => {
@@ -58,6 +62,21 @@ describe("clipboard", () => {
     expect(back[0].attrs).toEqual({ src: "x.png", ratio: 1.5 });
   });
 
+  it("round-trips list levels through json and serializes list html", () => {
+    const blocks = [
+      block("bullet-list", [run("Parent")]),
+      block("bullet-list", [run("Child")], { level: 1 }),
+      block("ordered-list", [run("Step")], { level: 1 }),
+    ];
+    const { html, json } = serializeSelection(blocks);
+    expect(html).toContain("<ul>");
+    expect(html).toContain('data-ori-list-level="1"');
+    expect(html).toContain("<ol>");
+    const back = deserializeOri(json)!;
+    expect(back.map((b) => b.type)).toEqual(["bullet-list", "bullet-list", "ordered-list"]);
+    expect(back.map((b) => b.attrs?.level ?? 0)).toEqual([0, 1, 1]);
+  });
+
   it("preserves whitespace and newlines inside <pre> (pasted code)", () => {
     const blocks = htmlToBlocks("<pre>  if (x) {\n    y();\n  }</pre>");
     expect(blocks).toHaveLength(1);
@@ -76,6 +95,20 @@ describe("clipboard", () => {
     const b = textToBlocks("a\nb");
     expect(b.map((x) => x.type)).toEqual(["paragraph", "paragraph"]);
     expect(b.map((x) => x.items.map((r) => r.text).join(""))).toEqual(["a", "b"]);
+  });
+
+  it("parses markdown-style plain-text lists with nesting", () => {
+    const b = textToBlocks("- one\n  - two\n3. three");
+    expect(b.map((x) => x.type)).toEqual(["bullet-list", "bullet-list", "ordered-list"]);
+    expect(b.map((x) => x.attrs?.level ?? 0)).toEqual([0, 1, 0]);
+    expect(b.map((x) => x.items.map((r) => r.text).join(""))).toEqual(["one", "two", "three"]);
+  });
+
+  it("parses external nested HTML lists into leveled list blocks", () => {
+    const blocks = htmlToBlocks("<ol><li>One<ul><li>Child</li></ul></li><li>Two</li></ol>");
+    expect(blocks.map((b) => b.type)).toEqual(["ordered-list", "bullet-list", "ordered-list"]);
+    expect(blocks.map((b) => b.attrs?.level ?? 0)).toEqual([0, 1, 0]);
+    expect(blocks.map((b) => b.items.map((r) => r.text.trim()).join(""))).toEqual(["One", "Child", "Two"]);
   });
 
   it("returns null for non-ori json", () => {

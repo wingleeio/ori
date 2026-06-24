@@ -24,6 +24,9 @@ export type {
   InlineAtomNode,
   BlockMeasureContext,
   AtomMeasureContext,
+  BlockInsetContext,
+  BlockInset,
+  BlockInsetSpec,
 } from "./nodes";
 export {
   insertText,

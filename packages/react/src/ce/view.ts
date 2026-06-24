@@ -1,5 +1,5 @@
-import type { EditorController, VisibleBlock } from "@wingleeio/ori-core";
-import { isCollapsed } from "@wingleeio/ori-core";
+import type { BlockType, EditorController, VisibleBlock } from "@wingleeio/ori-core";
+import { isCollapsed, isListBlockType, LIST_MARKER_GUTTER_PX } from "@wingleeio/ori-core";
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AtomRenderer, BlockRenderer } from "../renderers";
@@ -7,6 +7,7 @@ import { ORI_MIME, deserializeOri, htmlToBlocks, serializeSelection, textToBlock
 import { BLOCK_SEL, blockElOf, buildRun, domToModel, modelToDom } from "./dom";
 
 const PLACEHOLDER = "￼";
+const BULLET_MARKERS = ["\\2022", "\\25E6", "\\25AA"];
 
 /** A model position in the view layer (mirrors the controller's Position). */
 type Pos = { blockId: string; offset: number };
@@ -339,7 +340,7 @@ export class EditorView {
   /** A content signature for a block, so unchanged blocks aren't re-rendered. */
   private sig(id: string): string {
     const type = this.editor.getBlockType(id);
-    let s = type + "|" + JSON.stringify(this.editor.getInline(id));
+    let s = type + "|" + JSON.stringify(this.editor.getBlockAttrs(id)) + "|" + JSON.stringify(this.editor.getInline(id));
     if (this.opts.renderBlock(type)) {
       // Atomic blocks carry no inline text, so a resize (height change) or an
       // attrs edit wouldn't change the signature and the block would be skipped.
@@ -435,6 +436,7 @@ export class EditorView {
     this.unmountRootsIn(el);
     const type = this.editor.getBlockType(id);
     el.className = `ori-block ori-block-${type}`;
+    this.applyListStyles(el, id, type);
 
     const blockRenderer = this.opts.renderBlock(type);
     if (blockRenderer) {
@@ -512,6 +514,23 @@ export class EditorView {
     }
   }
 
+  private applyListStyles(el: HTMLElement, id: string, type: BlockType) {
+    if (!isListBlockType(type)) {
+      el.style.removeProperty("--ori-list-padding-left");
+      el.style.removeProperty("--ori-list-marker");
+      el.style.removeProperty("--ori-list-marker-gutter");
+      return;
+    }
+    const level = this.editor.getListLevel(id);
+    const marker =
+      type === "ordered-list"
+        ? `${this.editor.getListOrdinal(id)}.`
+        : BULLET_MARKERS[level % BULLET_MARKERS.length];
+    el.style.setProperty("--ori-list-padding-left", `${this.editor.getListInsetLeft(id)}px`);
+    el.style.setProperty("--ori-list-marker", `"${marker}"`);
+    el.style.setProperty("--ori-list-marker-gutter", `${LIST_MARKER_GUTTER_PX}px`);
+  }
+
   private makeBreak(off: number): HTMLElement {
     const br = document.createElement("br");
     br.dataset.off = String(off);
@@ -582,6 +601,25 @@ export class EditorView {
 
   /** Formatting + history shortcuts (the browser fires these as keydown). */
   private onKeyDown(e: KeyboardEvent) {
+    if (
+      !this.opts.readOnly &&
+      e.key === "Tab" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      const sel = this.readSelection();
+      if (sel) this.editor.setSelection(sel);
+      const changed = e.shiftKey
+        ? this.editor.decreaseListLevelAtSelection()
+        : this.editor.increaseListLevelAtSelection();
+      if (changed) {
+        e.preventDefault();
+        this.commit();
+      }
+      return;
+    }
+
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
     const k = e.key.toLowerCase();
@@ -1110,7 +1148,10 @@ export class EditorView {
       const sel = this.editor.getSelection();
       const targetEmpty = sel ? this.editor.getBlockText(sel.focus.blockId).length === 0 : true;
       if (blk.items.length) this.editor.insertInline(blk.items);
-      if (i > 0 || targetEmpty) this.editor.setBlockTypeAtSelection(blk.type);
+      if (i > 0 || targetEmpty) {
+        this.editor.setBlockTypeAtSelection(blk.type);
+        if (blk.attrs) this.editor.setBlockAttrsAtSelection(blk.attrs);
+      }
     });
   }
 }
