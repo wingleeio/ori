@@ -60,6 +60,10 @@ function EditorMock() {
                 <span className="w-5 text-right text-fd-primary">◦</span>
                 <span>Nested items wrap against the same Pretext layout.</span>
               </p>
+              <p className="flex items-baseline gap-2">
+                <span className="inline-block size-3 translate-y-0.5 rounded-[3px] border-[1.5px] border-fd-primary bg-fd-primary" />
+                <span className="text-fd-muted-foreground line-through">To-do items toggle a checkbox you can click.</span>
+              </p>
             </div>
             <div className="my-5 h-px bg-fd-border" />
             <p className="text-[15px] text-fd-foreground/90">
@@ -168,8 +172,8 @@ export default function HomePage() {
           <p className="mt-3 max-w-xl text-fd-muted-foreground">
             A full <code className="ff-mono text-sm text-fd-primary">@wingleeio/ori-react</code>{" "}
             editor, running right here in the page. Type, drag to select for the formatting menu, or
-            press <kbd className="ff-mono">/</kbd> for blocks like <span className="text-fd-foreground">Bullet list</span>{" "}
-            and <span className="text-fd-foreground">Numbered list</span>. Press <kbd className="ff-mono">@</kbd> to mention.
+            press <kbd className="ff-mono">/</kbd> for blocks like <span className="text-fd-foreground">Bullet list</span>,{" "}
+            <span className="text-fd-foreground">Numbered list</span>, or a <span className="text-fd-foreground">To-do list</span>. Press <kbd className="ff-mono">@</kbd> to mention.
           </p>
           <div className="mt-8">
             <LiveEditor />

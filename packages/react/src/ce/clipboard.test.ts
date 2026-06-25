@@ -77,6 +77,35 @@ describe("clipboard", () => {
     expect(back.map((b) => b.attrs?.level ?? 0)).toEqual([0, 1, 1]);
   });
 
+  it("round-trips todo items (level + checked) through json and html", () => {
+    const blocks = [
+      block("todo-list", [run("done")], { checked: true }),
+      block("todo-list", [run("todo")], { level: 1, checked: false }),
+    ];
+    const { html, json } = serializeSelection(blocks);
+    expect(html).toContain('data-ori-list-type="todo-list"');
+    expect(html).toContain('data-ori-checked="true"');
+    expect(html).toContain('<input type="checkbox" disabled checked>');
+    const back = deserializeOri(json)!;
+    expect(back.map((b) => b.type)).toEqual(["todo-list", "todo-list"]);
+    expect(back.map((b) => b.attrs?.checked ?? false)).toEqual([true, false]);
+    expect(back.map((b) => b.attrs?.level ?? 0)).toEqual([0, 1]);
+  });
+
+  it("parses markdown task items and external checkbox HTML into todo blocks", () => {
+    const md = textToBlocks("- [ ] open\n- [x] closed");
+    expect(md.map((b) => b.type)).toEqual(["todo-list", "todo-list"]);
+    expect(md.map((b) => b.attrs?.checked)).toEqual([false, true]);
+    expect(md.map((b) => b.items.map((r) => r.text).join(""))).toEqual(["open", "closed"]);
+
+    const fromHtml = htmlToBlocks(
+      '<ul><li><input type="checkbox" checked> shipped</li><li><input type="checkbox"> pending</li></ul>',
+    );
+    expect(fromHtml.map((b) => b.type)).toEqual(["todo-list", "todo-list"]);
+    expect(fromHtml.map((b) => b.attrs?.checked)).toEqual([true, false]);
+    expect(fromHtml.map((b) => b.items.map((r) => r.text.trim()).join(""))).toEqual(["shipped", "pending"]);
+  });
+
   it("preserves whitespace and newlines inside <pre> (pasted code)", () => {
     const blocks = htmlToBlocks("<pre>  if (x) {\n    y();\n  }</pre>");
     expect(blocks).toHaveLength(1);

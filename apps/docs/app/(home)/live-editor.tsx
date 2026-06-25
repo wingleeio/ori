@@ -66,6 +66,8 @@ function seedDoc(): Y.Doc {
     add("bullet-list", [{ text: "Press Tab to nest the current list item." }], { level: 1 });
     add("ordered-list", [{ text: "Ordered siblings keep numbering across nested children." }]);
     add("ordered-list", [{ text: "Shift+Tab lifts a nested item back out." }], { level: 1 });
+    add("todo-list", [{ text: "Click the checkbox to toggle a to-do item." }], { checked: true });
+    add("todo-list", [{ text: "Checked state lives in the block's attrs, like any mark." }]);
 
     add("heading", [{ text: "How it fits together" }]);
     add("paragraph", [

@@ -5,6 +5,7 @@ import {
   blockId,
   blockListLevel,
   blockText,
+  blockTodoChecked,
   blockType,
   createBlock,
   createNoteDoc,
@@ -53,6 +54,18 @@ describe("schema", () => {
     expect(blockListLevel(b)).toBe(7);
     expect(normalizeListLevel(-4)).toBe(0);
     expect(listInsetLeft(2)).toBe(76);
+  });
+
+  it("treats todo-list as a list type and reads its checked attr", () => {
+    const doc = new Y.Doc();
+    const blocks = getBlocks(doc);
+    const unchecked = createBlock("todo-list", "buy milk", "t1", { level: 1 });
+    const checked = createBlock("todo-list", "done", "t2", { checked: true });
+    blocks.push([unchecked, checked]);
+    expect(isListBlockType("todo-list")).toBe(true);
+    expect(blockListLevel(unchecked)).toBe(1);
+    expect(blockTodoChecked(unchecked)).toBe(false);
+    expect(blockTodoChecked(checked)).toBe(true);
   });
 
   it("genId returns distinct ids", () => {

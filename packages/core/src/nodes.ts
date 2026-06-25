@@ -122,6 +122,7 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
   },
   "bullet-list": { type: "bullet-list", text: true, spacing: 4, inset: listInset },
   "ordered-list": { type: "ordered-list", text: true, spacing: 4, inset: listInset },
+  "todo-list": { type: "todo-list", text: true, spacing: 4, inset: listInset },
 };
 
 export const DEFAULT_SCHEMA: EditorSchema = { blocks: DEFAULT_BLOCKS, atoms: {} };

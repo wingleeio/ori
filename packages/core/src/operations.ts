@@ -9,6 +9,7 @@ import {
   genId,
   isListBlockType,
   blockId as readId,
+  TODO_CHECKED_ATTR,
 } from "./schema";
 import { position, type Position } from "./selection";
 
@@ -129,7 +130,13 @@ export function splitBlock(
   // Headings/quotes continue as paragraphs; code and list items continue.
   const type = hit.block.get("type") as BlockType;
   const nextType: BlockType = type === "code" || isListBlockType(type) ? type : "paragraph";
-  const nextAttrs = isListBlockType(type) ? blockAttrs(hit.block) : undefined;
+  // List items carry their nesting level forward, but a continued todo item
+  // always starts unchecked — `checked` is per-item, never inherited.
+  let nextAttrs: Record<string, unknown> | undefined;
+  if (isListBlockType(type)) {
+    nextAttrs = blockAttrs(hit.block);
+    delete nextAttrs[TODO_CHECKED_ATTR];
+  }
   // Capture the id locally: a not-yet-integrated Y.Map returns undefined from
   // .get(), so we must not read the id back off the prelim block.
   const newId = genId();

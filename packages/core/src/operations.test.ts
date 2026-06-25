@@ -61,6 +61,18 @@ describe("operations", () => {
     expect(blockText(blocks.get(1)).toString()).toBe("llo");
   });
 
+  it("splitBlock keeps a todo's level but starts the new item unchecked", () => {
+    const doc = createNoteDoc([{ type: "todo-list", text: "hello", attrs: { level: 1, checked: true } }]);
+    const blocks = getBlocks(doc);
+    const id = blockId(blocks.get(0));
+    splitBlock(doc, blocks, id, 5);
+    expect(blockType(blocks.get(1))).toBe("todo-list");
+    expect(blockAttrs(blocks.get(1)).level).toBe(1);
+    expect(blockAttrs(blocks.get(1)).checked).toBeUndefined();
+    // The original item keeps its checked state.
+    expect(blockAttrs(blocks.get(0)).checked).toBe(true);
+  });
+
   it("mergeWithPrevious joins into the predecessor", () => {
     const { doc, blocks, id, textOf } = setup(["he", "llo"]);
     const after = mergeWithPrevious(doc, blocks, id(1));

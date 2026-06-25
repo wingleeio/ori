@@ -193,6 +193,22 @@ describe("EditorView input routing (beforeinput)", () => {
     expect(editor.getListLevel(id)).toBe(0);
   });
 
+  it("renders a todo item's checkbox state and reflects toggles", () => {
+    const doc = createNoteDoc([{ type: "todo-list", text: "task", attrs: { checked: true } }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const id = blockId(getBlocks(doc).get(0));
+    const { container } = render(<NoteEditor editor={editor} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    const block = ce.querySelector("[data-block-id]") as HTMLElement;
+    expect(block.className).toContain("ori-block-todo-list");
+    expect(block.getAttribute("data-ori-checked")).toBe("true");
+    // Toggling through the controller re-renders the block (attrs feed the sig).
+    act(() => {
+      editor.toggleTodoChecked(id);
+    });
+    expect((ce.querySelector("[data-block-id]") as HTMLElement).getAttribute("data-ori-checked")).toBe("false");
+  });
+
   it("Cmd+Z undoes / Cmd+Shift+Z redoes the last edit", () => {
     const { ce, editor, ids } = setup(["abc"]);
     editor.setSelection({ anchor: { blockId: ids[0], offset: 3 }, focus: { blockId: ids[0], offset: 3 } });

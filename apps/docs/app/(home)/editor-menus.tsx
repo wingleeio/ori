@@ -11,6 +11,7 @@ import {
   Italic,
   List,
   ListOrdered,
+  ListTodo,
   Pilcrow,
   Quote,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const SLASH: SlashCommand[] = [
   { id: "quote", label: "Quote", hint: "Callout", icon: Quote, keywords: ["quote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
   { id: "bullet-list", label: "Bullet list", hint: "Bulleted item", icon: List, keywords: ["bullet", "list", "ul"], run: (e) => e.setBlockTypeAtSelection("bullet-list") },
   { id: "ordered-list", label: "Numbered list", hint: "Numbered item", icon: ListOrdered, keywords: ["number", "ordered", "list", "ol"], run: (e) => e.setBlockTypeAtSelection("ordered-list") },
+  { id: "todo-list", label: "To-do list", hint: "Checklist item", icon: ListTodo, keywords: ["todo", "task", "check", "checkbox", "list"], run: (e) => e.setBlockTypeAtSelection("todo-list") },
   { id: "code", label: "Code block", hint: "Monospace block", icon: Code2, keywords: ["code", "snippet", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
   { id: "bold", label: "Bold", hint: "Toggle bold", icon: Bold, keywords: ["bold", "b"], run: (e) => e.toggleMark("bold") },
   { id: "italic", label: "Italic", hint: "Toggle italic", icon: Italic, keywords: ["italic", "i"], run: (e) => e.toggleMark("italic") },
@@ -278,6 +280,7 @@ const BLOCKS: { type: BlockType; label: string }[] = [
   { type: "quote", label: "Quote" },
   { type: "bullet-list", label: "Bullet" },
   { type: "ordered-list", label: "Numbered" },
+  { type: "todo-list", label: "To-do" },
   { type: "code", label: "Code" },
 ];
 

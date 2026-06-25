@@ -72,6 +72,8 @@ export function welcomeDoc(): Y.Doc {
     addBlock(doc, "bullet-list", [{ text: "Nested items keep their own measured gutter." }], { level: 1 });
     addBlock(doc, "ordered-list", [{ text: "Numbered siblings continue across nested children." }]);
     addBlock(doc, "ordered-list", [{ text: "Clipboard payloads carry list levels with the text." }], { level: 1 });
+    addBlock(doc, "todo-list", [{ text: "Try a to-do list — click the checkbox to mark it done." }], { checked: true });
+    addBlock(doc, "todo-list", [{ text: "Its checked state rides along in the block's attrs." }]);
     addBlock(doc, "quote", [
       {
         text:

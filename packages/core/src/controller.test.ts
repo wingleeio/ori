@@ -496,6 +496,45 @@ describe("EditorController", () => {
       expect(ed.blockIds().map((id) => ed.getListOrdinal(id))).toEqual([1, 2, 1, 2, 3]);
     });
 
+    it("toggles a todo item's checked state, ignoring non-todo blocks", () => {
+      const doc = createNoteDoc([
+        { type: "todo-list", text: "task" },
+        { type: "paragraph", text: "note" },
+      ]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      const [todo, para] = ed.blockIds();
+      expect(ed.getTodoChecked(todo)).toBe(false);
+      expect(ed.toggleTodoChecked(todo)).toBe(true);
+      expect(ed.getTodoChecked(todo)).toBe(true);
+      expect(ed.toggleTodoChecked(todo)).toBe(false);
+      // A non-todo block can't be toggled.
+      expect(ed.toggleTodoChecked(para)).toBe(false);
+      expect(ed.getBlockAttrs(para).checked).toBeUndefined();
+    });
+
+    it("drops the checked attr when a todo converts to another type", () => {
+      const doc = createNoteDoc([{ type: "todo-list", text: "task", attrs: { checked: true, level: 1 } }]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      const [id] = ed.blockIds();
+      ed.setSelection(at(id, 0));
+      // todo → bullet keeps the level but clears the (todo-only) checked state.
+      ed.setBlockTypeAtSelection("bullet-list");
+      expect(ed.getListLevel(id)).toBe(1);
+      expect(ed.getBlockAttrs(id).checked).toBeUndefined();
+    });
+
+    it("continues a checked todo as a fresh unchecked item on Enter", () => {
+      const doc = createNoteDoc([{ type: "todo-list", text: "task", attrs: { checked: true } }]);
+      const ed = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 200 });
+      const [first] = ed.blockIds();
+      ed.setSelection(at(first, 4));
+      ed.insertParagraphBreak();
+      const second = ed.blockIds()[1];
+      expect(ed.getBlockType(second)).toBe("todo-list");
+      expect(ed.getTodoChecked(second)).toBe(false);
+      expect(ed.getTodoChecked(first)).toBe(true);
+    });
+
     it("a block's inset adds its vertical padding to the measured height", () => {
       const { ed } = make(["x"]);
       const [id] = ed.blockIds();

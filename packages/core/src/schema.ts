@@ -7,8 +7,9 @@ export type BuiltinBlockType =
   | "quote"
   | "code"
   | "bullet-list"
-  | "ordered-list";
-export type ListBlockType = "bullet-list" | "ordered-list";
+  | "ordered-list"
+  | "todo-list";
+export type ListBlockType = "bullet-list" | "ordered-list" | "todo-list";
 
 /**
  * A block's `type`. Open to any string so hosts can register custom node types
@@ -32,6 +33,8 @@ export const MAX_LIST_LEVEL = 7;
 export const LIST_LEVEL_ATTR = "level";
 export const LIST_MARKER_GUTTER_PX = 28;
 export const LIST_NEST_STEP_PX = 24;
+/** Attr holding a todo-list item's checked state (boolean). */
+export const TODO_CHECKED_ATTR = "checked";
 
 export function getBlocks(doc: Y.Doc): BlockArray {
   return doc.getArray<Y.Map<unknown>>(BLOCKS_KEY);
@@ -55,7 +58,7 @@ export function blockType(block: BlockMap): BlockType {
 }
 
 export function isListBlockType(type: BlockType): type is ListBlockType {
-  return type === "bullet-list" || type === "ordered-list";
+  return type === "bullet-list" || type === "ordered-list" || type === "todo-list";
 }
 
 export function normalizeListLevel(value: unknown): number {
@@ -65,6 +68,11 @@ export function normalizeListLevel(value: unknown): number {
 
 export function blockListLevel(block: BlockMap): number {
   return normalizeListLevel(blockAttrs(block)[LIST_LEVEL_ATTR]);
+}
+
+/** Whether a todo-list item is checked (its `checked` attr is truthy). */
+export function blockTodoChecked(block: BlockMap): boolean {
+  return blockAttrs(block)[TODO_CHECKED_ATTR] === true;
 }
 
 export function listInsetLeft(level: number): number {

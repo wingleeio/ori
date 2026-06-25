@@ -128,7 +128,8 @@
 }
 
 .ori-ce .ori-block-bullet-list,
-.ori-ce .ori-block-ordered-list {
+.ori-ce .ori-block-ordered-list,
+.ori-ce .ori-block-todo-list {
   /* Padding is mirrored by the list node inset: 28px marker gutter + 24px per
      level. Keep these values in sync with LIST_* constants in @ori/core. */
   position: relative;
@@ -145,6 +146,44 @@
   font-variant-numeric: tabular-nums;
   text-align: end;
   white-space: nowrap;
+}
+
+/* Todo (task) list: a clickable checkbox drawn entirely with pseudo-elements so
+   no node enters the block's text (the offset map stays paragraph-identical).
+   The view toggles `data-ori-checked` on pointer-down in the marker column. */
+.ori-ce .ori-block-todo-list::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0.34em;
+  inset-inline-start: calc(var(--ori-list-padding-left, 28px) - var(--ori-list-marker-gutter, 28px) + 2px);
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ori-todo-border, color-mix(in oklab, currentColor 45%, transparent));
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ori-ce .ori-block-todo-list[data-ori-checked="true"]::before {
+  background: var(--ori-todo-checked, #2563eb);
+  border-color: var(--ori-todo-checked, #2563eb);
+}
+/* The checkmark, positioned over the filled box. */
+.ori-ce .ori-block-todo-list[data-ori-checked="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 0.5em;
+  inset-inline-start: calc(var(--ori-list-padding-left, 28px) - var(--ori-list-marker-gutter, 28px) + 7px);
+  width: 4px;
+  height: 8px;
+  border: solid var(--ori-todo-check, #fff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.ori-ce .ori-block-todo-list[data-ori-checked="true"] {
+  color: var(--ori-todo-done, color-mix(in oklab, currentColor 55%, transparent));
+  text-decoration: line-through;
+  text-decoration-color: var(--ori-todo-done, color-mix(in oklab, currentColor 45%, transparent));
 }
 
 .ori-line {

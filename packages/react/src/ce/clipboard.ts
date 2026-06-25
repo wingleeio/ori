@@ -85,10 +85,18 @@ function blockHtml(blocks: ClipBlock[], index: number): string {
   const b = blocks[index];
   const body = b.items.map(runHtml).join("") || "<br>";
   if (isListBlockType(b.type)) {
-    const tag = b.type === "ordered-list" ? "ol" : "ul";
     const level = listLevel(b.attrs);
+    const indent = ` style="margin-left:${level * LIST_NEST_STEP_PX}px"`;
+    if (b.type === "todo-list") {
+      // A real (disabled) checkbox so other apps render the task state; our own
+      // round-trip reads it (and the data-* hints) back in htmlToBlocks.
+      const checked = b.attrs?.checked === true;
+      const box = `<input type="checkbox" disabled${checked ? " checked" : ""}>`;
+      return `<ul><li data-ori-list-type="todo-list" data-ori-list-level="${level}" data-ori-checked="${checked}"${indent}>${box}${body}</li></ul>`;
+    }
+    const tag = b.type === "ordered-list" ? "ol" : "ul";
     const value = b.type === "ordered-list" ? ` value="${listOrdinal(blocks, index)}"` : "";
-    return `<${tag}><li data-ori-list-level="${level}"${value} style="margin-left:${level * LIST_NEST_STEP_PX}px">${body}</li></${tag}>`;
+    return `<${tag}><li data-ori-list-level="${level}"${value}${indent}>${body}</li></${tag}>`;
   }
   const tag = BLOCK_TAG[b.type] ?? "p";
   return `<${tag}>${body}</${tag}>`;
@@ -157,11 +165,20 @@ export function textToBlocks(text: string): ClipBlock[] {
     .map((line) => {
       const m = line.match(/^([ \t]*)(?:([-*+])|(\d+)[.)])\s+(.*)$/);
       if (m) {
-        const spaces = m[1].replace(/\t/g, "  ").length;
+        const level = normalizeListLevel(Math.floor(m[1].replace(/\t/g, "  ").length / 2));
+        // GitHub-style task item: a bullet marker followed by "[ ]" / "[x]".
+        const task = m[2] ? m[4].match(/^\[([ xX])\]\s+(.*)$/) : null;
+        if (task) {
+          return {
+            type: "todo-list" as BlockType,
+            attrs: { level, checked: task[1].toLowerCase() === "x" },
+            items: task[2] ? [{ text: task[2], start: 0 }] : [],
+          };
+        }
         const type = m[3] ? "ordered-list" : "bullet-list";
         return {
           type: type as BlockType,
-          attrs: { level: normalizeListLevel(Math.floor(spaces / 2)) },
+          attrs: { level },
           items: m[4] ? [{ text: m[4], start: 0 }] : [],
         };
       }
@@ -235,8 +252,23 @@ export function htmlToBlocks(html: string): ClipBlock[] {
       if (isListItem && list) {
         const raw = el.getAttribute("data-ori-list-level");
         const level = raw != null && raw !== "" ? normalizeListLevel(Number(raw)) : normalizeListLevel(list.level);
-        curType = list.type;
-        curAttrs = { level };
+        // A task item is flagged by our own data-* hint or, for external HTML
+        // (GitHub etc.), a leading checkbox input directly in the item — a direct
+        // child only, so a nested sublist's checkbox can't mislabel its parent.
+        const checkbox = (Array.from(el.children) as HTMLElement[]).find(
+          (c) => c.tagName === "INPUT" && c.getAttribute("type") === "checkbox",
+        );
+        const isTodo = el.getAttribute("data-ori-list-type") === "todo-list" || checkbox != null;
+        if (isTodo) {
+          const checked =
+            el.getAttribute("data-ori-checked") === "true" ||
+            (checkbox instanceof HTMLInputElement ? checkbox.checked : checkbox?.hasAttribute("checked") ?? false);
+          curType = "todo-list";
+          curAttrs = { level, checked };
+        } else {
+          curType = list.type;
+          curAttrs = { level };
+        }
         walk(el, m, pre, { ...list, level });
       } else {
         if (isBlock) curType = blockTypeForTag(tag);

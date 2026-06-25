@@ -196,6 +196,13 @@ export class EditorView {
       if (!this.opts.readOnly) e.preventDefault();
     });
     on("drop", (e) => this.onDrop(e as DragEvent));
+    // Toggling a todo checkbox is a pointer gesture on the marker gutter, not a
+    // text edit. Handle it on pointerdown and preventDefault so the browser
+    // doesn't also drop the caret into the block (which would move the cursor).
+    on("pointerdown", (e) => {
+      const pe = e as PointerEvent;
+      if (this.toggleTodoFromPointer(pe.target, pe.clientX, pe.clientY)) pe.preventDefault();
+    });
 
     const onSelChange = () => {
       if (this.applyingModel || this.composing) return;
@@ -519,16 +526,48 @@ export class EditorView {
       el.style.removeProperty("--ori-list-padding-left");
       el.style.removeProperty("--ori-list-marker");
       el.style.removeProperty("--ori-list-marker-gutter");
+      el.removeAttribute("data-ori-checked");
       return;
     }
+    el.style.setProperty("--ori-list-padding-left", `${this.editor.getListInsetLeft(id)}px`);
+    el.style.setProperty("--ori-list-marker-gutter", `${LIST_MARKER_GUTTER_PX}px`);
+    if (type === "todo-list") {
+      // The checkbox marker is drawn purely in CSS from this attribute; no text
+      // node enters the block, so the offset map stays identical to a paragraph.
+      el.style.removeProperty("--ori-list-marker");
+      el.setAttribute("data-ori-checked", this.editor.getTodoChecked(id) ? "true" : "false");
+      return;
+    }
+    el.removeAttribute("data-ori-checked");
     const level = this.editor.getListLevel(id);
     const marker =
       type === "ordered-list"
         ? `${this.editor.getListOrdinal(id)}.`
         : BULLET_MARKERS[level % BULLET_MARKERS.length];
-    el.style.setProperty("--ori-list-padding-left", `${this.editor.getListInsetLeft(id)}px`);
     el.style.setProperty("--ori-list-marker", `"${marker}"`);
-    el.style.setProperty("--ori-list-marker-gutter", `${LIST_MARKER_GUTTER_PX}px`);
+  }
+
+  /**
+   * If a pointer-down landed on a todo item's checkbox (the marker column to the
+   * left of its text), toggle the item's checked state and report it handled so
+   * the caller can suppress the default caret placement.
+   */
+  private toggleTodoFromPointer(target: EventTarget | null, x: number, y: number): boolean {
+    if (this.opts.readOnly) return false;
+    const blockEl = blockElOf(target instanceof Node ? target : null, this.root);
+    const id = blockEl?.dataset.blockId;
+    if (!blockEl || !id || this.editor.getBlockType(id) !== "todo-list") return false;
+    const rect = blockEl.getBoundingClientRect();
+    // The marker sits in a `LIST_MARKER_GUTTER_PX`-wide column ending at the
+    // text's left edge (the block's content inset). Only that column toggles —
+    // the indentation to its left, and the text to its right, behave normally.
+    const textLeft = rect.left + this.editor.getListInsetLeft(id);
+    if (x < textLeft - LIST_MARKER_GUTTER_PX || x > textLeft || y < rect.top || y > rect.bottom) {
+      return false;
+    }
+    this.editor.toggleTodoChecked(id);
+    this.commit();
+    return true;
   }
 
   private makeBreak(off: number): HTMLElement {

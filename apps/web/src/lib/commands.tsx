@@ -8,6 +8,7 @@ import {
   Italic,
   List,
   ListOrdered,
+  ListTodo,
   type LucideIcon,
   Minus,
   Pilcrow,
@@ -32,6 +33,7 @@ export const BLOCK_OPTIONS: BlockOption[] = [
   { type: "quote", label: "Quote", icon: Quote },
   { type: "bullet-list", label: "Bullet list", icon: List },
   { type: "ordered-list", label: "Numbered list", icon: ListOrdered },
+  { type: "todo-list", label: "To-do list", icon: ListTodo },
   { type: "code", label: "Code block", icon: Code2 },
 ];
 
@@ -65,6 +67,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "quote", label: "Quote", hint: "Callout or citation", icon: Quote, keywords: ["quote", "blockquote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
   { id: "bullet-list", label: "Bullet list", hint: "Bulleted item", icon: List, keywords: ["bullet", "list", "ul", "unordered"], run: (e) => e.setBlockTypeAtSelection("bullet-list") },
   { id: "ordered-list", label: "Numbered list", hint: "Numbered item", icon: ListOrdered, keywords: ["number", "ordered", "list", "ol"], run: (e) => e.setBlockTypeAtSelection("ordered-list") },
+  { id: "todo-list", label: "To-do list", hint: "Checklist item", icon: ListTodo, keywords: ["todo", "task", "check", "checkbox", "list"], run: (e) => e.setBlockTypeAtSelection("todo-list") },
   { id: "code", label: "Code block", hint: "Monospace block", icon: Code2, keywords: ["code", "snippet", "pre", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
   { id: "bold", label: "Bold", hint: "Toggle bold", icon: Bold, keywords: ["bold", "strong", "b"], run: (e) => e.toggleMark("bold") },
   { id: "italic", label: "Italic", hint: "Toggle italic", icon: Italic, keywords: ["italic", "emphasis", "i"], run: (e) => e.toggleMark("italic") },

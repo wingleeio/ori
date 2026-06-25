@@ -11,6 +11,7 @@ describe("nodes / schema", () => {
       "ordered-list",
       "paragraph",
       "quote",
+      "todo-list",
     ]);
     expect(Object.values(DEFAULT_BLOCKS).every((n) => n.text)).toBe(true);
   });

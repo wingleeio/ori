@@ -42,6 +42,7 @@ import {
   blockAttrs,
   blockListLevel,
   blockText,
+  blockTodoChecked,
   blockType,
   createNoteDoc,
   getBlocks,
@@ -50,6 +51,7 @@ import {
   blockId as readBlockId,
   listInsetLeft,
   normalizeListLevel,
+  TODO_CHECKED_ATTR,
   type BlockArray,
   type BlockMap,
   type BlockType,
@@ -932,6 +934,24 @@ export class EditorController {
     return ordinal;
   }
 
+  /** Whether a todo-list item is checked. */
+  getTodoChecked(id: string): boolean {
+    const block = this.byId(id);
+    return block ? blockTodoChecked(block) : false;
+  }
+
+  /**
+   * Toggle a todo-list item's checked state. No-op (returns the unchanged
+   * state) for blocks that aren't todo items.
+   */
+  toggleTodoChecked(id: string): boolean {
+    const block = this.byId(id);
+    if (!block || blockType(block) !== "todo-list") return false;
+    const next = !blockTodoChecked(block);
+    this.setBlockAttr(id, TODO_CHECKED_ATTR, next);
+    return next;
+  }
+
   /** Plain text of the current selection (blocks joined by newlines). */
   getSelectedText(): string {
     const sel = this.selection;
@@ -1484,6 +1504,9 @@ export class EditorController {
         } else {
           attrMap.delete("level");
         }
+        // `checked` only means anything on a todo item — drop it on any other
+        // type so a former todo doesn't carry a stale (or reappearing) state.
+        if (type !== "todo-list") attrMap.delete(TODO_CHECKED_ATTR);
       }
     });
   }
