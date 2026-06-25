@@ -1,5 +1,11 @@
 # @wingleeio/ori-core
 
+## 0.5.0
+
+### Minor Changes
+
+- a95ca5f: Add a built-in to-do (task) list block with a clickable checkbox, nesting and keyboard behavior shared with the other list types, matching React rendering, and clipboard round-tripping (private JSON, checkbox HTML, and `- [ ]` / `- [x]` plain text).
+
 ## 0.4.0
 
 ### Minor Changes
