@@ -911,6 +911,15 @@ export class EditorController {
   }
 
   /**
+   * A block's content inset (px) — the padding/border that shifts its text in
+   * (a list's marker gutter, a quote's bar, a code block's padding). Lets the UI
+   * align overlays like the placeholder with where the block's text/caret begins.
+   */
+  getBlockInset(id: string): { top: number; right: number; bottom: number; left: number } {
+    return this.insetOf(id);
+  }
+
+  /**
    * Ordered-list item number among contiguous siblings at the same level. Deeper
    * nested items are skipped; a shallower item or non-list block starts a new
    * sibling sequence.

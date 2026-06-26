@@ -158,6 +158,18 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect(screen.getByText("Write here")).toBeDefined();
   });
 
+  it("offsets the placeholder to the caret when the empty block is a list item", () => {
+    const doc = createNoteDoc([{ type: "todo-list", text: "" }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const id = blockId(getBlocks(doc).get(0));
+    render(<NoteEditor editor={editor} placeholder="Write here" />);
+    const ph = screen.getByText("Write here") as HTMLElement;
+    // The checkbox's marker gutter insets the text, so the placeholder must shift
+    // right to sit at the caret rather than under the checkbox.
+    expect(ph.style.left).toBe(`${editor.getListInsetLeft(id)}px`);
+    expect(parseFloat(ph.style.left)).toBeGreaterThan(0);
+  });
+
   it("survives React StrictMode (view + controller re-created cleanly)", () => {
     const doc = createNoteDoc([{ text: "abc" }]);
     let editor!: ReturnType<typeof useEditor>;

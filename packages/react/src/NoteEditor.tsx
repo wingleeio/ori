@@ -398,7 +398,18 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             />
           ) : null}
           {snapshot.empty && placeholder ? (
-            <div className="ori-placeholder" aria-hidden>
+            <div
+              className="ori-placeholder"
+              aria-hidden
+              // Align the placeholder with where the caret/text actually starts:
+              // an empty list item, quote or code block insets its content, so a
+              // fixed left:0 would sit under the marker/bar instead of at the caret.
+              style={(() => {
+                const first = snapshot.visible[0];
+                const inset = first ? editor.getBlockInset(first.id) : null;
+                return inset ? { left: inset.left, top: inset.top } : undefined;
+              })()}
+            >
               {placeholder}
             </div>
           ) : null}
