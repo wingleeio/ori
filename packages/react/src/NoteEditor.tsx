@@ -1,4 +1,4 @@
-import type { EditorController } from "@wingleeio/ori-core";
+import { isCollapsed, type EditorController } from "@wingleeio/ori-core";
 import {
   forwardRef,
   useEffect,
@@ -397,22 +397,33 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
               aria-hidden
             />
           ) : null}
-          {snapshot.empty && placeholder ? (
-            <div
-              className="ori-placeholder"
-              aria-hidden
-              // Align the placeholder with where the caret/text actually starts:
-              // an empty list item, quote or code block insets its content, so a
-              // fixed left:0 would sit under the marker/bar instead of at the caret.
-              style={(() => {
-                const first = snapshot.visible[0];
-                const inset = first ? editor.getBlockInset(first.id) : null;
-                return inset ? { left: inset.left, top: inset.top } : undefined;
-              })()}
-            >
-              {placeholder}
-            </div>
-          ) : null}
+          {(() => {
+            if (!placeholder) return null;
+            // Show the placeholder on the empty block at the caret (so a freshly
+            // created empty paragraph/list item/quote hints what to type), and on
+            // a brand-new empty document even before it's focused. Position it in
+            // document space at the block's content start — top accounts for the
+            // block's slot + spacing, left/top for its inset (a list's marker
+            // gutter, a quote's bar) — so it sits exactly where the caret does.
+            const sel = snapshot.selection;
+            const caretId =
+              sel && isCollapsed(sel) ? sel.focus.blockId : null;
+            const target =
+              snapshot.visible.find(
+                (b) => b.id === caretId && editor.getBlockText(b.id).length === 0,
+              ) ?? (snapshot.empty ? snapshot.visible[0] : undefined);
+            if (!target) return null;
+            const inset = editor.getBlockInset(target.id);
+            return (
+              <div
+                className="ori-placeholder"
+                aria-hidden
+                style={{ top: target.top + target.spacing + inset.top, left: inset.left }}
+              >
+                {placeholder}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

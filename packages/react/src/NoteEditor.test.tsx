@@ -158,6 +158,39 @@ describe("<NoteEditor> (contentEditable)", () => {
     expect(screen.getByText("Write here")).toBeDefined();
   });
 
+  it("shows the placeholder on the focused empty block mid-document", () => {
+    const doc = createNoteDoc([{ text: "hello" }, { type: "bullet-list", text: "" }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const [, empty] = editor.blockIds();
+    const { container } = render(<NoteEditor editor={editor} placeholder="Write here" />);
+    // The document isn't empty and nothing is focused yet → no placeholder.
+    expect(container.querySelector(".ori-placeholder")).toBeNull();
+    // Put the caret in the empty bullet → the placeholder appears there, inset.
+    act(() => {
+      editor.setSelection({ anchor: { blockId: empty, offset: 0 }, focus: { blockId: empty, offset: 0 } });
+    });
+    const ph = container.querySelector(".ori-placeholder") as HTMLElement;
+    expect(ph).not.toBeNull();
+    expect(ph.textContent).toBe("Write here");
+    expect(ph.style.left).toBe(`${editor.getListInsetLeft(empty)}px`);
+    // Typing into it (no longer empty) hides the placeholder.
+    act(() => {
+      editor.insertText("x");
+    });
+    expect(container.querySelector(".ori-placeholder")).toBeNull();
+  });
+
+  it("does not show the placeholder when the caret is in a non-empty block", () => {
+    const doc = createNoteDoc([{ text: "hello" }, { text: "world" }]);
+    const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
+    const [, second] = editor.blockIds();
+    const { container } = render(<NoteEditor editor={editor} placeholder="Write here" />);
+    act(() => {
+      editor.setSelection({ anchor: { blockId: second, offset: 0 }, focus: { blockId: second, offset: 0 } });
+    });
+    expect(container.querySelector(".ori-placeholder")).toBeNull();
+  });
+
   it("offsets the placeholder to the caret when the empty block is a list item", () => {
     const doc = createNoteDoc([{ type: "todo-list", text: "" }]);
     const editor = new EditorController({ doc, measurer: createMonospaceMeasurer(), width: 400 });
