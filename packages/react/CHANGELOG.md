@@ -1,5 +1,13 @@
 # @wingleeio/ori-react
 
+## 0.5.1
+
+### Patch Changes
+
+- 63ccc66: Align the empty-document placeholder with the caret. When the only block is an inset block (a to-do/bullet/numbered list item, quote, or code block) the placeholder no longer sits under the marker/checkbox — it now starts where the text and caret do. Adds `EditorController.getBlockInset(id)` to support this.
+- Updated dependencies [63ccc66]
+  - @wingleeio/ori-core@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes
