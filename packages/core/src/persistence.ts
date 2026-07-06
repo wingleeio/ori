@@ -1,19 +1,24 @@
 import * as Y from "yjs";
+import { REMOTE_ORIGIN } from "./schema";
 
 /** Encode the full document state as a binary Yjs update. */
 export function encodeDoc(doc: Y.Doc): Uint8Array {
   return Y.encodeStateAsUpdate(doc);
 }
 
-/** Apply a binary Yjs update (local restore or remote sync) to a doc. */
-export function applyUpdate(doc: Y.Doc, update: Uint8Array): void {
-  Y.applyUpdate(doc, update);
+/**
+ * Apply a binary Yjs update (local restore or remote sync) to a doc. The
+ * update is applied under {@link REMOTE_ORIGIN} (or `origin`, if given), so it
+ * never lands on the local undo stack — undo only tracks editor-made edits.
+ */
+export function applyUpdate(doc: Y.Doc, update: Uint8Array, origin: unknown = REMOTE_ORIGIN): void {
+  Y.applyUpdate(doc, update, origin);
 }
 
 /** Build a `Y.Doc` and hydrate it from a stored update, if any. */
 export function docFromUpdate(update?: Uint8Array | null): Y.Doc {
   const doc = new Y.Doc();
-  if (update && update.byteLength > 0) Y.applyUpdate(doc, update);
+  if (update && update.byteLength > 0) Y.applyUpdate(doc, update, REMOTE_ORIGIN);
   return doc;
 }
 

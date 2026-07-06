@@ -8,6 +8,7 @@ import {
   createBlock,
   genId,
   isListBlockType,
+  LOCAL_ORIGIN,
   blockId as readId,
   TODO_CHECKED_ATTR,
 } from "./schema";
@@ -83,7 +84,7 @@ export function insertText(
   if (!hit) return pos;
   doc.transact(() => {
     blockText(hit.block).insert(pos.offset, text, attributes);
-  });
+  }, LOCAL_ORIGIN);
   return position(pos.blockId, pos.offset + text.length);
 }
 
@@ -100,7 +101,7 @@ export function deleteRange(
 
   if (si.index === ei.index) {
     const len = end.offset - start.offset;
-    if (len > 0) doc.transact(() => blockText(si.block).delete(start.offset, len));
+    if (len > 0) doc.transact(() => blockText(si.block).delete(start.offset, len), LOCAL_ORIGIN);
     return position(start.blockId, start.offset);
   }
 
@@ -113,7 +114,7 @@ export function deleteRange(
     }
     blocks.delete(si.index + 1, ei.index - si.index);
     appendDelta(startText, tail, start.offset);
-  });
+  }, LOCAL_ORIGIN);
   return position(start.blockId, start.offset);
 }
 
@@ -148,7 +149,7 @@ export function splitBlock(
     if (text.length > offset) text.delete(offset, text.length - offset);
     blocks.insert(hit.index + 1, [newBlock]);
     appendDelta(blockText(newBlock), tail, 0);
-  });
+  }, LOCAL_ORIGIN);
   return position(newId, 0);
 }
 
@@ -169,7 +170,7 @@ export function mergeWithPrevious(
   doc.transact(() => {
     appendDelta(prevText, curDelta, prevLen);
     blocks.delete(hit.index, 1);
-  });
+  }, LOCAL_ORIGIN);
   return position(readId(prev), prevLen);
 }
 
@@ -193,7 +194,7 @@ export function formatRange(
       const to = i === ei.index ? end.offset : text.length;
       if (to > from) text.format(from, to - from, { [mark]: value });
     }
-  });
+  }, LOCAL_ORIGIN);
 }
 
 /** Change a block's `type` (paragraph / heading / quote / code / custom). */
@@ -205,7 +206,7 @@ export function setBlockType(
 ): void {
   const hit = find(blocks, blockId);
   if (!hit) return;
-  doc.transact(() => hit.block.set("type", type));
+  doc.transact(() => hit.block.set("type", type), LOCAL_ORIGIN);
 }
 
 /** Insert an inline embed (custom atom) at a text position; returns the caret after it. */
@@ -219,8 +220,40 @@ export function insertInlineEmbed(
   if (!hit) return pos;
   doc.transact(() => {
     blockText(hit.block).insertEmbed(pos.offset, embed);
-  });
+  }, LOCAL_ORIGIN);
   return position(pos.blockId, pos.offset + 1);
+}
+
+/**
+ * Move a block to `toIndex` (its final index in the resulting array). Yjs types
+ * can't be re-inserted once deleted, so the block is CLONED — same id, type,
+ * attrs and full rich delta (marks + embeds) — into a fresh `Y.Map` at the
+ * target position within one transaction. Keeping the id stable means
+ * selection, layout cache and height bookkeeping all survive the move.
+ * Returns whether anything moved.
+ */
+export function moveBlock(
+  doc: Y.Doc,
+  blocks: BlockArray,
+  blockId: string,
+  toIndex: number,
+): boolean {
+  const hit = find(blocks, blockId);
+  if (!hit) return false;
+  const target = Math.max(0, Math.min(toIndex, blocks.length - 1));
+  if (target === hit.index) return false;
+
+  const type = blockType(hit.block);
+  const attrs = blockAttrs(hit.block);
+  const delta = blockText(hit.block).toDelta() as DeltaOp[];
+  const clone = createBlock(type, "", readId(hit.block), attrs);
+
+  doc.transact(() => {
+    blocks.delete(hit.index, 1);
+    blocks.insert(target, [clone]);
+    appendDelta(blockText(clone), delta, 0);
+  }, LOCAL_ORIGIN);
+  return true;
 }
 
 /** Insert a new (typically atomic) block after `afterId`; returns its caret. */
@@ -241,7 +274,7 @@ export function insertBlockAfter(
       const attrMap = newBlock.get("attrs") as Y.Map<unknown>;
       for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
     }
-  });
+  }, LOCAL_ORIGIN);
   return position(newId, 0);
 }
 

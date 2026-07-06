@@ -1,5 +1,5 @@
 import type { Measurer, Typography } from "@wingleeio/ori-pretext";
-import { listInsetLeft, normalizeListLevel } from "./schema";
+import { listInsetLeft, normalizeHeadingLevel, normalizeListLevel } from "./schema";
 
 /**
  * The extension schema. Block nodes describe how a block type is measured and
@@ -46,8 +46,9 @@ export interface BlockNode {
    * own height via {@link measure} and render themselves.
    */
   text: boolean;
-  /** Derive this node's typography from the base (text nodes only). */
-  typography?: (base: Typography) => Typography;
+  /** Derive this node's typography from the base (text nodes only). Receives
+   * the block's `attrs` so typography can vary per block (e.g. heading level). */
+  typography?: (base: Typography, attrs?: Record<string, unknown>) => Typography;
   /** Spacing in px above this block — its top margin / section break
    * (defaults to the editor's blockSpacing; the first block always gets 0). */
   spacing?: number;
@@ -76,6 +77,9 @@ export interface EditorSchema {
   atoms: Record<string, InlineAtomNode>;
 }
 
+/** Heading font-size multipliers by level — keep in sync with styles.css. */
+const HEADING_SCALE: Record<number, number> = { 1: 1.6, 2: 1.35, 3: 1.15 };
+
 const listInset = ({ attrs }: BlockInsetContext): BlockInset => ({
   top: 0,
   right: 0,
@@ -92,11 +96,12 @@ export const DEFAULT_BLOCKS: Record<string, BlockNode> = {
     // A generous gap above (it binds tightly to the body below, whose own
     // smaller spacing is the gap under the heading) reads as a section break.
     spacing: 28,
-    typography: (b) => ({
+    typography: (b, attrs) => ({
       ...b,
-      // No rounding: the rendered CSS uses 1.6em / 1.3, so the model must use the
-      // exact fractional values to wrap and size identically.
-      fontSize: b.fontSize * 1.6,
+      // Per-level scale, mirrored exactly by the rendered CSS
+      // (.ori-block-heading[data-heading-level]) — no rounding, so the model
+      // wraps and sizes identically to the DOM.
+      fontSize: b.fontSize * HEADING_SCALE[normalizeHeadingLevel(attrs?.level)],
       // Match the rendered CSS weight (.ori-block-heading: 600) so width
       // measurement — and thus wrapping/line count — agrees with the DOM.
       fontWeight: 600,

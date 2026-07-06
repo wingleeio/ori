@@ -1,7 +1,9 @@
 import {
   isListBlockType,
   LIST_NEST_STEP_PX,
+  normalizeHeadingLevel,
   normalizeListLevel,
+  sanitizeUrl,
   type BlockType,
   type InlineItem,
   type Marks,
@@ -59,7 +61,11 @@ function runHtml(it: InlineItem): string {
   return html;
 }
 
-const BLOCK_TAG: Record<string, string> = { heading: "h2", quote: "blockquote", code: "pre" };
+const BLOCK_TAG: Record<string, string> = { quote: "blockquote", code: "pre" };
+
+function headingTag(attrs?: Record<string, unknown>): string {
+  return `h${normalizeHeadingLevel(attrs?.level)}`;
+}
 
 function listLevel(attrs?: Record<string, unknown>): number {
   return normalizeListLevel(attrs?.level);
@@ -98,7 +104,7 @@ function blockHtml(blocks: ClipBlock[], index: number): string {
     const value = b.type === "ordered-list" ? ` value="${listOrdinal(blocks, index)}"` : "";
     return `<${tag}><li data-ori-list-level="${level}"${value}${indent}>${body}</li></${tag}>`;
   }
-  const tag = BLOCK_TAG[b.type] ?? "p";
+  const tag = b.type === "heading" ? headingTag(b.attrs) : BLOCK_TAG[b.type] ?? "p";
   return `<${tag}>${body}</${tag}>`;
 }
 
@@ -186,11 +192,13 @@ export function textToBlocks(text: string): ClipBlock[] {
     });
 }
 
-function blockTypeForTag(tag: string): BlockType {
-  if (/^H[1-6]$/.test(tag)) return "heading";
-  if (tag === "BLOCKQUOTE") return "quote";
-  if (tag === "PRE") return "code";
-  return "paragraph";
+function blockTypeForTag(tag: string): { type: BlockType; attrs?: Record<string, unknown> } {
+  const h = /^H([1-6])$/.exec(tag);
+  // H1→1, H2→2, H3..H6→3 (the deepest level ori models).
+  if (h) return { type: "heading", attrs: { level: normalizeHeadingLevel(Number(h[1])) } };
+  if (tag === "BLOCKQUOTE") return { type: "quote" };
+  if (tag === "PRE") return { type: "code" };
+  return { type: "paragraph" };
 }
 
 /** Parse external HTML into typed, block-grouped inline items (best-effort). */
@@ -237,7 +245,8 @@ export function htmlToBlocks(html: string): ClipBlock[] {
       if (tag === "U" || tag === "INS") m.underline = true;
       if (tag === "S" || tag === "STRIKE" || tag === "DEL") m.strike = true;
       if (tag === "CODE" || tag === "KBD" || tag === "TT") m.code = true;
-      const href = tag === "A" ? el.getAttribute("href") : null;
+      // Sanitize pasted hrefs — external HTML can carry javascript:/data: URLs.
+      const href = tag === "A" ? sanitizeUrl(el.getAttribute("href") ?? "") : null;
       if (href) m.link = href;
       if (tag === "UL" || tag === "OL") {
         if (cur.length) flush();
@@ -271,7 +280,11 @@ export function htmlToBlocks(html: string): ClipBlock[] {
         }
         walk(el, m, pre, { ...list, level });
       } else {
-        if (isBlock) curType = blockTypeForTag(tag);
+        if (isBlock) {
+          const mapped = blockTypeForTag(tag);
+          curType = mapped.type;
+          curAttrs = mapped.attrs;
+        }
         walk(el, m, pre || tag === "PRE", list);
       }
       if (isBlock && (cur.length || blocks.length === blockCountBefore)) flush();

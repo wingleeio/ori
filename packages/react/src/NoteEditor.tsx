@@ -5,8 +5,10 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from "react";
 import { EditorView } from "./ce/view";
 import { useEditorSnapshot } from "./hooks";
@@ -25,6 +27,24 @@ export interface NoteEditorProps {
   blockRenderers?: Record<string, BlockRenderer>;
   /** Renderers for custom inline atom types. */
   atomRenderers?: Record<string, AtomRenderer>;
+  /**
+   * Called on Cmd/Ctrl+K with the model selection already synced — show your
+   * link UI, then call `editor.setLink(url)` / `editor.removeLink()`.
+   */
+  onLinkShortcut?: () => void;
+  /** Accessible name for the editing surface (aria-label on the textbox). */
+  ariaLabel?: string;
+  /**
+   * Show a hover drag handle in the left margin for reordering blocks
+   * (mouse only; hidden on touch and when read-only). Default true.
+   */
+  dragHandle?: boolean;
+  /**
+   * App keyboard shortcuts (`"Mod-Shift-k": handler`), checked before the
+   * editor's built-ins with the model selection already synced. Return `true`
+   * from a handler to consume the event.
+   */
+  keymap?: Record<string, (editor: EditorController) => boolean | void>;
 }
 
 /** A viewport-space rectangle (client coordinates). */
@@ -105,13 +125,220 @@ function caretClientRect(): DOMRect | null {
 }
 
 /**
+ * Visually-hidden document outline: a navigation landmark listing every
+ * heading, with jump buttons. Virtualization keeps off-screen blocks out of
+ * the DOM entirely, so a screen reader can't survey the document by reading —
+ * this landmark restores whole-document structure (and gives keyboard users
+ * jump-to-section for free). Recomputed per revision; it reads text only for
+ * headings, so it stays cheap on large notes.
+ */
+function OutlineNav({
+  editor,
+  revision,
+  scrollerRef,
+}: {
+  editor: EditorController;
+  revision: number;
+  scrollerRef: RefObject<HTMLDivElement | null>;
+}) {
+  void revision; // re-render trigger; the outline itself comes from the editor
+  const outline = editor.getOutline();
+  if (outline.length === 0) return null;
+  return (
+    <nav aria-label="Document outline" className="ori-visually-hidden">
+      <ul>
+        {outline.map((h) => (
+          <li key={h.id}>
+            <button
+              type="button"
+              onClick={() => {
+                const sc = scrollerRef.current;
+                if (sc) sc.scrollTop = editor.getBlockTop(h.id);
+                editor.setSelection({
+                  anchor: { blockId: h.id, offset: 0 },
+                  focus: { blockId: h.id, offset: 0 },
+                });
+              }}
+            >
+              {`H${h.level}: ${h.text || "(empty heading)"}`}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/**
+ * Hover drag handle for reordering blocks (the Notion-style grip). Lives in
+ * the content overlay so it scrolls with the text. Mouse-only by design: it's
+ * a hover affordance, and touch text-selection would fight a touch drag.
+ *
+ * Dragging never uses HTML5 DnD (which would serialize the block into a data
+ * transfer and fight the text-range drag in the view) — it's a pointer-capture
+ * loop that picks an insertion index from the rendered blocks' midpoints and
+ * calls `editor.moveBlock` on drop. Virtualization note: targets are the
+ * *rendered* blocks, which always cover the viewport, so every drop the user
+ * can see is reachable; auto-scroll at the edges extends the range.
+ */
+function DragHandles({
+  editor,
+  scrollerRef,
+  contentRef,
+  overlayRef,
+}: {
+  editor: EditorController;
+  scrollerRef: RefObject<HTMLDivElement | null>;
+  contentRef: RefObject<HTMLDivElement | null>;
+  overlayRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [hover, setHover] = useState<{ id: string; top: number; height: number } | null>(null);
+  const [dropTop, setDropTop] = useState<number | null>(null);
+  const dragRef = useRef<{ id: string; lastIndex: number | null } | null>(null);
+
+  // Track the hovered block from mouse movement over the scroller.
+  useEffect(() => {
+    const sc = scrollerRef.current;
+    const overlay = overlayRef.current;
+    if (!sc || !overlay) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || dragRef.current) return;
+      const content = contentRef.current;
+      if (!content) return;
+      const blocks = [...content.querySelectorAll("[data-block-id]")] as HTMLElement[];
+      const overlayRect = overlay.getBoundingClientRect();
+      for (const b of blocks) {
+        const r = b.getBoundingClientRect();
+        if (e.clientY >= r.top && e.clientY <= r.bottom) {
+          setHover({
+            id: b.dataset.blockId as string,
+            top: r.top - overlayRect.top,
+            height: r.height,
+          });
+          return;
+        }
+      }
+      setHover(null);
+    };
+    const onLeave = () => {
+      if (!dragRef.current) setHover(null);
+    };
+    sc.addEventListener("pointermove", onMove);
+    sc.addEventListener("pointerleave", onLeave);
+    return () => {
+      sc.removeEventListener("pointermove", onMove);
+      sc.removeEventListener("pointerleave", onLeave);
+    };
+  }, [editor, scrollerRef, contentRef, overlayRef]);
+
+  /** Insertion index (in document order) for a pointer Y, from rendered blocks. */
+  const insertionAt = (clientY: number): { index: number; top: number } | null => {
+    const content = contentRef.current;
+    const overlay = overlayRef.current;
+    if (!content || !overlay) return null;
+    const overlayRect = overlay.getBoundingClientRect();
+    const visible = editor.getSnapshot().visible;
+    const byId = new Map(visible.map((v) => [v.id, v] as const));
+    const blocks = [...content.querySelectorAll("[data-block-id]")] as HTMLElement[];
+    for (const b of blocks) {
+      const v = byId.get(b.dataset.blockId as string);
+      if (!v) continue;
+      const r = b.getBoundingClientRect();
+      if (clientY < (r.top + r.bottom) / 2) {
+        return { index: v.index, top: r.top - overlayRect.top };
+      }
+    }
+    // Past the last rendered block → insert after it.
+    const last = blocks[blocks.length - 1];
+    const lastV = last ? byId.get(last.dataset.blockId as string) : undefined;
+    if (!last || !lastV) return null;
+    return { index: lastV.index + 1, top: last.getBoundingClientRect().bottom - overlayRect.top };
+  };
+
+  const onHandleDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!hover) return;
+    e.preventDefault(); // don't move focus / start a text selection
+    const id = hover.id;
+    dragRef.current = { id, lastIndex: null };
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+
+    const onMove = (ev: PointerEvent) => {
+      const sc = scrollerRef.current;
+      // Auto-scroll near the viewport edges so long documents are reachable.
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        if (ev.clientY < r.top + 32) sc.scrollTop -= 12;
+        else if (ev.clientY > r.bottom - 32) sc.scrollTop += 12;
+      }
+      const at = insertionAt(ev.clientY);
+      dragRef.current = { id, lastIndex: at ? at.index : null };
+      setDropTop(at ? at.top : null);
+    };
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      const drag = dragRef.current;
+      dragRef.current = null;
+      setDropTop(null);
+      if (!drag || drag.lastIndex == null) return;
+      const from = editor.getBlockIndex(drag.id);
+      if (from < 0) return;
+      // `lastIndex` is "insert before block currently at this index"; removing
+      // the dragged block first shifts later indices down by one.
+      const to = drag.lastIndex > from ? drag.lastIndex - 1 : drag.lastIndex;
+      editor.moveBlock(drag.id, to);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  };
+
+  return (
+    <>
+      {hover ? (
+        <div
+          className="ori-drag-handle"
+          style={{
+            position: "absolute",
+            left: -24,
+            top: hover.top + Math.max(0, (Math.min(hover.height, 28) - 18) / 2),
+            cursor: dragRef.current ? "grabbing" : "grab",
+          }}
+          contentEditable={false}
+          aria-hidden
+          onPointerDown={onHandleDown}
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="2.5" cy="2" r="1.4" />
+            <circle cx="7.5" cy="2" r="1.4" />
+            <circle cx="2.5" cy="7" r="1.4" />
+            <circle cx="7.5" cy="7" r="1.4" />
+            <circle cx="2.5" cy="12" r="1.4" />
+            <circle cx="7.5" cy="12" r="1.4" />
+          </svg>
+        </div>
+      ) : null}
+      {dropTop != null ? (
+        <div
+          className="ori-drop-indicator"
+          style={{ position: "absolute", left: 0, right: 0, top: dropTop - 1 }}
+          aria-hidden
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
  * A contentEditable note editor: the browser owns caret, selection, trackpad,
  * native menus and IME on the live text, while edits are routed through the
  * {@link EditorController} (Y.Doc). A custom caret is drawn on top so it can be
  * branded/animated independently of the (hidden) native one.
  */
 export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor(
-  { editor, className, style, maxWidth = 720, placeholder, autoFocus, readOnly, blockRenderers, atomRenderers },
+  { editor, className, style, maxWidth = 720, placeholder, autoFocus, readOnly, blockRenderers, atomRenderers, onLinkShortcut, ariaLabel, dragHandle = true, keymap },
   ref,
 ) {
   const snapshot = useEditorSnapshot(editor);
@@ -127,9 +354,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   const requestCaretUpdateRef = useRef<() => void>(noop);
   readOnlyRef.current = readOnly;
 
-  // Keep the latest renderers reachable without recreating the view.
-  const renderersRef = useRef({ blockRenderers, atomRenderers });
-  renderersRef.current = { blockRenderers, atomRenderers };
+  // Keep the latest renderers/callbacks reachable without recreating the view.
+  const renderersRef = useRef({ blockRenderers, atomRenderers, onLinkShortcut, keymap });
+  renderersRef.current = { blockRenderers, atomRenderers, onLinkShortcut, keymap };
 
   useImperativeHandle(
     ref,
@@ -172,8 +399,16 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     }
     const view = new EditorView(el, editor, {
       readOnly,
+      ariaLabel,
       renderAtom: (t) => renderersRef.current.atomRenderers?.[t],
       renderBlock: (t) => renderersRef.current.blockRenderers?.[t],
+      // Only intercept Cmd/Ctrl+K when the host actually handles it.
+      onLinkShortcut: onLinkShortcut ? () => renderersRef.current.onLinkShortcut?.() : undefined,
+      // Live getter so an inline keymap prop stays fresh without recreating
+      // the view (which would reset the editing surface).
+      get keymap() {
+        return renderersRef.current.keymap;
+      },
     });
     viewRef.current = view;
     return () => {
@@ -365,6 +600,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
 
   return (
     <div className={`ori-root${className ? ` ${className}` : ""}`} style={style}>
+      <OutlineNav editor={editor} revision={snapshot.revision} scrollerRef={scrollerRef} />
       <div className="ori-scroller" ref={scrollerRef} onScroll={onScroll} onPointerDown={onPointerDown}>
         <div className="ori-content" ref={overlayRef} style={{ maxWidth, marginInline: "auto", position: "relative" }}>
           <div
@@ -381,6 +617,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
             }}
             suppressContentEditableWarning
           />
+          {!readOnly && dragHandle ? (
+            <DragHandles
+              editor={editor}
+              scrollerRef={scrollerRef}
+              contentRef={contentRef}
+              overlayRef={overlayRef}
+            />
+          ) : null}
           {!readOnly ? (
             <div
               ref={caretRef}
@@ -413,6 +657,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
                 (b) => b.id === caretId && editor.getBlockText(b.id).length === 0,
               ) ?? (snapshot.empty ? snapshot.visible[0] : undefined);
             if (!target) return null;
+            // Atomic blocks (table, image, divider) render their own content —
+            // their empty hidden Y.Text must not summon the typing hint.
+            if (editor.isAtomicType(target.type)) return null;
             const inset = editor.getBlockInset(target.id);
             return (
               <div

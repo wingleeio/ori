@@ -1,6 +1,7 @@
 import { NoteEditor, useEditor, type NoteEditorHandle } from "@wingleeio/ori-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type * as Y from "yjs";
+import { FindBar } from "@/components/FindBar";
 import { MentionMenu } from "@/components/MentionMenu";
 import { SelectionMenu } from "@/components/SelectionMenu";
 import { SlashMenu } from "@/components/SlashMenu";
@@ -23,6 +24,7 @@ export interface EditorPaneProps {
 export function EditorPane({ noteId, doc, onMeta, onMounted }: EditorPaneProps) {
   const editor = useEditor({ doc, schema: editorNodes });
   const editorRef = useRef<NoteEditorHandle>(null);
+  const [findOpen, setFindOpen] = useState(false);
 
   useLayoutEffect(() => {
     onMounted?.(editor.getSnapshot().blockCount);
@@ -62,7 +64,21 @@ export function EditorPane({ noteId, doc, onMeta, onMounted }: EditorPaneProps) 
         className="min-h-0 flex-1"
         blockRenderers={blockRenderers}
         atomRenderers={atomRenderers}
+        onLinkShortcut={() => {
+          const url = window.prompt("Link URL", editor.getActiveLink() ?? "");
+          if (url === null) return; // cancelled
+          if (url.trim()) editor.setLink(url);
+          else editor.removeLink();
+          editorRef.current?.focus();
+        }}
+        keymap={{
+          "Mod-f": () => {
+            setFindOpen(true);
+            return true;
+          },
+        }}
       />
+      <FindBar editor={editor} editorRef={editorRef} open={findOpen} onClose={() => setFindOpen(false)} />
       <SelectionMenu editor={editor} editorRef={editorRef} />
       <SlashMenu editor={editor} editorRef={editorRef} />
       <MentionMenu editor={editor} editorRef={editorRef} />

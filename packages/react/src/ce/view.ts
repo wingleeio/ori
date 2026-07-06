@@ -1,5 +1,12 @@
-import type { BlockType, EditorController, VisibleBlock } from "@wingleeio/ori-core";
-import { isCollapsed, isListBlockType, LIST_MARKER_GUTTER_PX } from "@wingleeio/ori-core";
+import type {
+  BlockType,
+  EditorController,
+  HighlightToken,
+  InlineItem,
+  TokenKind,
+  VisibleBlock,
+} from "@wingleeio/ori-core";
+import { isCollapsed, isListBlockType, LIST_MARKER_GUTTER_PX, markdownToBlocks } from "@wingleeio/ori-core";
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AtomRenderer, BlockRenderer } from "../renderers";
@@ -25,10 +32,100 @@ function inOverlay(node: EventTarget | Node | null): boolean {
   return node instanceof Element && node.closest(OVERLAY_SELECTOR) != null;
 }
 
+/** An inline run, optionally tagged with a syntax-token kind (code blocks). */
+type TokenizedItem = InlineItem & { tok?: TokenKind };
+
+/** Does a `"Mod-Shift-k"`-style binding match this keydown? */
+function keyBindingMatches(binding: string, e: KeyboardEvent): boolean {
+  const parts = binding.split("-");
+  const key = parts.pop() ?? "";
+  let mod = false;
+  let shift = false;
+  let alt = false;
+  let ctrl = false;
+  let meta = false;
+  for (const p of parts) {
+    const m = p.toLowerCase();
+    if (m === "mod") mod = true;
+    else if (m === "shift") shift = true;
+    else if (m === "alt") alt = true;
+    else if (m === "ctrl" || m === "control") ctrl = true;
+    else if (m === "meta" || m === "cmd") meta = true;
+  }
+  if (mod && !(e.metaKey || e.ctrlKey)) return false;
+  if (meta && !e.metaKey) return false;
+  if (ctrl && !e.ctrlKey) return false;
+  if (!mod && !meta && e.metaKey) return false;
+  if (!mod && !ctrl && e.ctrlKey) return false;
+  if (shift !== e.shiftKey) return false;
+  if (alt !== e.altKey) return false;
+  const evKey = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const wantKey = key.length === 1 ? key.toLowerCase() : key;
+  return evKey === wantKey;
+}
+
+/**
+ * Split text runs at syntax-token boundaries, tagging each segment with its
+ * token kind. Offsets stay absolute so every segment renders as a normal
+ * [data-off] run — highlighting is purely a matter of class names. Tokens are
+ * sorted and non-overlapping (the Highlighter contract), so one forward scan
+ * suffices; atoms pass through untouched.
+ */
+function splitByTokens(items: InlineItem[], tokens: HighlightToken[]): TokenizedItem[] {
+  const out: TokenizedItem[] = [];
+  let t = 0;
+  for (const item of items) {
+    if (item.atom || item.text.length === 0) {
+      out.push(item);
+      continue;
+    }
+    const start = item.start;
+    const end = item.start + item.text.length;
+    let pos = start;
+    while (pos < end) {
+      while (t < tokens.length && tokens[t].end <= pos) t += 1;
+      const tok = t < tokens.length ? tokens[t] : null;
+      let segEnd = end;
+      let kind: TokenKind | undefined;
+      if (tok && tok.start < end) {
+        if (pos < tok.start) {
+          segEnd = Math.min(tok.start, end); // plain gap before the next token
+        } else {
+          segEnd = Math.min(tok.end, end);
+          kind = tok.kind;
+        }
+      }
+      out.push({
+        text: item.text.slice(pos - start, segEnd - start),
+        start: pos,
+        marks: item.marks,
+        tok: kind,
+      });
+      pos = segEnd;
+    }
+  }
+  return out;
+}
+
 export interface ViewOptions {
   readOnly?: boolean;
+  /** Accessible name for the editing surface (aria-label). */
+  ariaLabel?: string;
+  /**
+   * Host keyboard shortcuts, checked BEFORE the built-ins (so a host can
+   * override them). Keys use the `"Mod-Shift-k"` format — `Mod` is ⌘ on macOS
+   * and Ctrl elsewhere; the last segment matches `event.key` (case-insensitive
+   * for letters). A handler returning `true` consumes the event.
+   */
+  keymap?: Record<string, (editor: EditorController) => boolean | void>;
   renderAtom: (type: string) => AtomRenderer | undefined;
   renderBlock: (type: string) => BlockRenderer | undefined;
+  /**
+   * Invoked on the link shortcut (Cmd/Ctrl+K) so the host can show its link
+   * UI (an input popover, a prompt, …) and then call `editor.setLink(url)` /
+   * `editor.removeLink()`. The model selection is synced before the call.
+   */
+  onLinkShortcut?: () => void;
 }
 
 /**
@@ -71,6 +168,10 @@ export class EditorView {
     root.setAttribute("spellcheck", opts.readOnly ? "false" : "true");
     root.setAttribute("role", "textbox");
     root.setAttribute("aria-multiline", "true");
+    if (opts.readOnly) root.setAttribute("aria-readonly", "true");
+    else root.removeAttribute("aria-readonly");
+    if (opts.ariaLabel) root.setAttribute("aria-label", opts.ariaLabel);
+    else root.removeAttribute("aria-label");
     // A read-only (contenteditable=false) surface isn't focusable by default, so
     // it would never receive the Cmd+A keydown — and the native fallback copies
     // only the rendered window. Make it focusable so select-all/copy work whole.
@@ -93,7 +194,7 @@ export class EditorView {
       this.detachers.push(() => root.removeEventListener(t, h as EventListener, o));
     };
     on("beforeinput", (e) => this.onBeforeInput(e as InputEvent));
-    on("input", () => this.onInput());
+    on("input", (e) => this.onInput(e));
     on("keydown", (e) => this.onKeyDown(e as KeyboardEvent));
     on("blur", () => {
       // Clicking outside the editor drops the selection (so a selection toolbar
@@ -170,6 +271,21 @@ export class EditorView {
     on("copy", (e) => this.onClipboard(e as ClipboardEvent, false));
     on("cut", (e) => this.onClipboard(e as ClipboardEvent, true));
     on("paste", (e) => this.onPaste(e as ClipboardEvent));
+    // Cmd/Ctrl+click on a link run opens it (read-only: plain click too) —
+    // links render as measured spans, not <a>, so navigation is ours to do.
+    on("click", (e) => {
+      const me = e as MouseEvent;
+      if (!this.opts.readOnly && !me.metaKey && !me.ctrlKey) return;
+      let n: Node | null = me.target as Node;
+      while (n && n !== this.root) {
+        if (n instanceof HTMLElement && n.dataset.href) {
+          me.preventDefault();
+          window.open(n.dataset.href, "_blank", "noopener,noreferrer");
+          return;
+        }
+        n = n.parentNode;
+      }
+    });
     on("dragstart", (e) => {
       // Remember a range dragged from within the editor so a move-drop can
       // delete the source (otherwise an internal drag would duplicate text).
@@ -440,20 +556,31 @@ export class EditorView {
 
   private renderBlockInner(el: HTMLElement, vb: VisibleBlock) {
     const id = vb.id;
-    this.unmountRootsIn(el);
     const type = this.editor.getBlockType(id);
     el.className = `ori-block ori-block-${type}`;
     this.applyListStyles(el, id, type);
+    this.applyBlockSemantics(el, id, type);
 
     const blockRenderer = this.opts.renderBlock(type);
     if (blockRenderer) {
       el.contentEditable = "false";
-      el.textContent = "";
       const layout = this.editor.getLayout(id)!;
       // Pin the block to its measured height so the DOM matches the height the
       // virtualizer reserved — a renderer that lays out to its container (e.g. a
       // divider using h-full) then fills exactly that, with no scroll drift.
       el.style.height = `${layout.height}px`;
+      // Reuse an existing root when this element already hosts this renderer:
+      // React reconciles in place, so an INTERACTIVE custom block (a table
+      // being typed into) keeps its focused input and in-progress value across
+      // an attrs commit, instead of being torn down and remounted.
+      const existingHost = el.firstElementChild as HTMLElement | null;
+      const existingRoot = existingHost ? this.roots.get(existingHost) : undefined;
+      if (existingHost && existingRoot) {
+        existingRoot.render(blockRenderer({ editor: this.editor, block: vb, layout }) as ReactNode);
+        return;
+      }
+      this.unmountRootsIn(el);
+      el.textContent = "";
       // Mount into a fresh child host, never the reused block element: a
       // deferred unmount of the previous root must not collide with createRoot
       // on the same container ("container already passed to createRoot"). The
@@ -470,15 +597,24 @@ export class EditorView {
       this.roots.set(host, root);
       return;
     }
+    this.unmountRootsIn(el);
     el.contentEditable = "inherit";
     el.style.height = "";
     el.textContent = "";
-    const items = this.editor.getInline(id);
+    let items: TokenizedItem[] = this.editor.getInline(id);
     if (items.length === 0) {
       el.appendChild(document.createElement("br")); // keep an empty block selectable
       return;
     }
+    // Code blocks: split runs at syntax-token boundaries so each segment can
+    // carry a color class. Segments stay ordinary [data-off] runs — colors are
+    // the ONLY difference, so measurement and offset mapping are untouched.
+    if (type === "code") {
+      const tokens = this.editor.getHighlightTokens(id);
+      if (tokens.length) items = splitByTokens(items, tokens);
+    }
     for (const item of items) {
+      const tokClass = item.tok ? `ori-tok-${item.tok}` : undefined;
       if (item.atom) {
         const span = document.createElement("span");
         span.className = "ori-atom";
@@ -504,12 +640,12 @@ export class EditorView {
             off += 1;
           }
           if (part) {
-            el.appendChild(buildRun({ text: part, start: off, marks: item.marks }));
+            el.appendChild(buildRun({ text: part, start: off, marks: item.marks }, tokClass));
             off += part.length;
           }
         });
       } else {
-        el.appendChild(buildRun(item));
+        el.appendChild(buildRun(item, tokClass));
       }
     }
     // A block ending in a hard break needs a filler <br> after the break, or the
@@ -518,6 +654,39 @@ export class EditorView {
     // domToModel ignore it — it's purely so the caret can land on the new line.
     if (this.editor.getBlockText(id).endsWith("\n")) {
       el.appendChild(document.createElement("br"));
+    }
+  }
+
+  /**
+   * Per-block ARIA semantics. Blocks render as divs (so Pretext's measured
+   * layout is never disturbed by UA styles), so structure is conveyed through
+   * roles: headings get role/aria-level (level also drives per-level CSS),
+   * quotes get blockquote, list items get listitem + aria-level, and todo
+   * items additionally expose their checked state.
+   */
+  private applyBlockSemantics(el: HTMLElement, id: string, type: BlockType) {
+    const set = (attrs: Record<string, string>) => {
+      for (const k of ["role", "aria-level", "aria-checked", "data-heading-level"]) {
+        if (attrs[k] == null) el.removeAttribute(k);
+      }
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    };
+    if (type === "heading") {
+      const level = String(this.editor.getHeadingLevel(id));
+      set({ role: "heading", "aria-level": level, "data-heading-level": level });
+    } else if (type === "quote") {
+      set({ role: "blockquote" });
+    } else if (isListBlockType(type)) {
+      const attrs: Record<string, string> = {
+        role: "listitem",
+        "aria-level": String(this.editor.getListLevel(id) + 1),
+      };
+      if (type === "todo-list") {
+        attrs["aria-checked"] = this.editor.getTodoChecked(id) ? "true" : "false";
+      }
+      set(attrs);
+    } else {
+      set({});
     }
   }
 
@@ -640,6 +809,23 @@ export class EditorView {
 
   /** Formatting + history shortcuts (the browser fires these as keydown). */
   private onKeyDown(e: KeyboardEvent) {
+    if (this.inCustomWidget(e.target)) return; // widget-internal typing is native
+    // Host keymap first, so an app can claim (or override) any shortcut. The
+    // model selection is synced beforehand so handlers see what the user sees.
+    if (this.opts.keymap) {
+      for (const [binding, handler] of Object.entries(this.opts.keymap)) {
+        if (!keyBindingMatches(binding, e)) continue;
+        if (!this.allSelected) {
+          const sel = this.readSelection();
+          if (sel) this.editor.setSelection(sel);
+        }
+        if (handler(this.editor) === true) {
+          e.preventDefault();
+          this.commit();
+          return;
+        }
+      }
+    }
     if (
       !this.opts.readOnly &&
       e.key === "Tab" &&
@@ -695,6 +881,23 @@ export class EditorView {
       e.preventDefault();
       this.editor.redo();
       this.commit();
+    } else if (k === "k" && this.opts.onLinkShortcut) {
+      e.preventDefault();
+      if (!this.allSelected) {
+        const sel = this.readSelection();
+        if (sel) this.editor.setSelection(sel);
+      }
+      this.opts.onLinkShortcut();
+    } else if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      // Cmd/Ctrl+Shift+↑/↓ — move the caret's block up/down one slot.
+      const sel = this.readSelection() ?? this.editor.getSelection();
+      if (!sel) return;
+      const id = sel.focus.blockId;
+      const index = this.editor.getBlockIndex(id);
+      if (index < 0) return;
+      e.preventDefault();
+      const moved = this.editor.moveBlock(id, e.key === "ArrowUp" ? index - 1 : index + 1);
+      if (moved) this.commit();
     }
   }
 
@@ -754,7 +957,17 @@ export class EditorView {
     return { anchor: { blockId: a.blockId, offset: a.offset }, focus: { blockId: f.blockId, offset: f.offset } };
   }
 
+  /** True for events originating inside a custom block's own form controls
+   *  (inputs in a table cell, etc.) — those edit the widget, not the document,
+   *  and must never be routed through (or blocked by) the editor. */
+  private inCustomWidget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("input,textarea,select,[data-ori-widget]")) return true;
+    return false;
+  }
+
   private onBeforeInput(e: InputEvent) {
+    if (this.inCustomWidget(e.target)) return;
     this.pendingNativeEdit = null;
     if (this.opts.readOnly) {
       e.preventDefault();
@@ -927,7 +1140,8 @@ export class EditorView {
     return e.dataTransfer?.getData("text/plain") ?? "";
   }
 
-  private onInput() {
+  private onInput(e?: Event) {
+    if (e && this.inCustomWidget(e.target)) return; // widget edits aren't doc edits
     if (this.composing || this.opts.readOnly) return;
     const pending = this.pendingNativeEdit;
     this.pendingNativeEdit = null;
@@ -948,6 +1162,20 @@ export class EditorView {
         if (pending.to > pending.from) this.editor.deleteBackward();
         if (pending.insert) this.editor.insertText(pending.insert);
       });
+      // A markdown input rule may have transformed the block (type change,
+      // deleted prefix/delimiters): the model no longer matches what the
+      // browser painted, so re-render from the model and restore the caret.
+      if (this.editor.takeInputRuleApplied()) {
+        this.commit();
+        return;
+      }
+      // Code blocks repaint after every native keystroke: syntax-token colors
+      // live in the rendered runs, and the browser just painted a bare text
+      // node. Sig-based rendering makes this cheap (only this block repaints).
+      if (this.editor.getBlockType(id) === "code") {
+        this.commit();
+        return;
+      }
       this.reindex(blockEl);
       blockEl.removeAttribute("data-sig");
       if (!pending.insert) {
@@ -981,6 +1209,18 @@ export class EditorView {
       if (to > from) this.editor.deleteBackward();
       if (insert) this.editor.insertText(insert);
     });
+    // A markdown input rule may have transformed the block (see the pending
+    // fast path above): re-render from the model when it diverged from the DOM.
+    if (this.editor.takeInputRuleApplied()) {
+      this.commit();
+      return;
+    }
+    // Code blocks repaint after every native edit so syntax colors stay live
+    // (see the pending fast path above).
+    if (this.editor.getBlockType(id) === "code") {
+      this.commit();
+      return;
+    }
     // The browser painted the text; realign the run offsets so live DOM positions
     // stay correct. Then INVALIDATE the block's render signature (don't stamp the
     // model's — the native DOM has only the text, not our run wrappers/marks, and
@@ -1024,6 +1264,7 @@ export class EditorView {
 
   /** Copy/cut: put plain, HTML and a private (mark+type-preserving) payload on the clipboard. */
   private onClipboard(e: ClipboardEvent, isCut: boolean) {
+    if (this.inCustomWidget(e.target)) return; // copy/cut inside a widget input is native
     // Defensive: after Cmd+A serialize the whole document even if a stray
     // selectionchange clipped the model selection to the rendered window.
     if (this.allSelected) this.editor.selectAll();
@@ -1044,6 +1285,7 @@ export class EditorView {
 
   /** Paste: restore marks from our payload, else parse external HTML, else plain text. */
   private onPaste(e: ClipboardEvent) {
+    if (this.inCustomWidget(e.target)) return; // paste into a widget input is native
     if (this.opts.readOnly || !e.clipboardData) return;
     e.preventDefault();
     // After Cmd+A, paste replaces the whole document, not the rendered window the
@@ -1061,9 +1303,17 @@ export class EditorView {
     const cd = e.clipboardData;
     const ori = cd.getData(ORI_MIME);
     const html = cd.getData("text/html");
-    let blocks = ori ? deserializeOri(ori) : null;
+    let blocks: ClipBlock[] | null = ori ? deserializeOri(ori) : null;
     if (!blocks?.length && html) blocks = htmlToBlocks(html);
-    if (!blocks?.length) blocks = textToBlocks(cd.getData("text/plain"));
+    if (!blocks?.length) {
+      // Plain text is parsed as markdown (headings, lists, fences, **marks**),
+      // so pasting markdown source produces rich blocks — the Notion behavior.
+      // Pasting INTO a code block stays verbatim: code is literal by contract.
+      const plain = cd.getData("text/plain");
+      const sel2 = this.editor.getSelection();
+      const inCode = sel2 && this.editor.getBlockType(sel2.focus.blockId) === "code";
+      blocks = inCode ? textToBlocks(plain) : markdownToBlocks(plain);
+    }
     this.pasteBlocks(blocks);
     this.commit();
   }

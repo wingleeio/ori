@@ -37,8 +37,30 @@ describe("clipboard", () => {
 
   it("serializes block types to the right html tags", () => {
     const { html } = serializeSelection([block("heading", [run("H")]), block("quote", [run("Q")])]);
-    expect(html).toContain("<h2>H</h2>");
+    expect(html).toContain("<h1>H</h1>"); // default heading level is 1
     expect(html).toContain("<blockquote>Q</blockquote>");
+  });
+
+  it("serializes heading levels to h1/h2/h3 and imports H1–H6 with levels", () => {
+    const { html } = serializeSelection([
+      block("heading", [run("A")], { level: 1 }),
+      block("heading", [run("B")], { level: 2 }),
+      block("heading", [run("C")], { level: 3 }),
+    ]);
+    expect(html).toContain("<h1>A</h1>");
+    expect(html).toContain("<h2>B</h2>");
+    expect(html).toContain("<h3>C</h3>");
+    const back = htmlToBlocks("<h1>A</h1><h2>B</h2><h3>C</h3><h5>D</h5>");
+    expect(back.map((b) => b.type)).toEqual(["heading", "heading", "heading", "heading"]);
+    // H4–H6 clamp to the deepest modeled level (3).
+    expect(back.map((b) => b.attrs?.level)).toEqual([1, 2, 3, 3]);
+  });
+
+  it("sanitizes unsafe pasted hrefs", () => {
+    const blocks = htmlToBlocks('<p><a href="javascript:alert(1)">evil</a> <a href="https://ok.com">ok</a></p>');
+    const items = blocks[0].items;
+    expect(items.find((r) => r.text === "evil")?.marks?.link).toBeUndefined();
+    expect(items.find((r) => r.text === "ok")?.marks?.link).toBe("https://ok.com");
   });
 
   it("keeps block boundaries through json", () => {

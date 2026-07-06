@@ -21,11 +21,17 @@ import {
   activeMarks as marksInRange,
   fullAttributes,
   intersectMarks,
+  linkBoundsAt,
   sliceTextPlain,
   textToInline,
   textToPlain,
   type AtomResolver,
 } from "./delta";
+import { resolveExtensions, type EditorExtension, type ResolvedExtensions } from "./extension";
+import { defaultHighlighter, normalizeLang, type Highlighter, type HighlightToken } from "./highlight";
+import { matchBlockRule, matchInlineRule } from "./inputrules";
+import { sanitizeUrl } from "./link";
+import { blocksToMarkdown, type ContentBlock } from "./markdown";
 import { Emitter } from "./emitter";
 import { createSchema, type BlockNode, type EditorSchema } from "./nodes";
 import {
@@ -35,19 +41,24 @@ import {
   insertInlineEmbed,
   insertText,
   mergeWithPrevious,
+  moveBlock,
   setBlockType,
   splitBlock,
 } from "./operations";
 import {
   blockAttrs,
+  blockHeadingLevel,
   blockListLevel,
   blockText,
   blockTodoChecked,
   blockType,
   createNoteDoc,
   getBlocks,
+  HEADING_LEVEL_ATTR,
   isListBlockType,
   LIST_LEVEL_ATTR,
+  LOCAL_ORIGIN,
+  normalizeHeadingLevel,
   blockId as readBlockId,
   listInsetLeft,
   normalizeListLevel,
@@ -96,6 +107,33 @@ export interface EditorOptions {
   blockSpacing?: number;
   /** Custom block/atom nodes, merged over the built-ins. */
   schema?: Partial<EditorSchema>;
+  /**
+   * Maximum number of off-screen blocks whose *detailed* layout (fragments +
+   * caret geometry) stays cached. Cheap height metrics are always kept for
+   * every visited block, so eviction never causes scroll jumps — it only
+   * bounds memory in long sessions over large notes. Default 256.
+   */
+  maxDetailedLayouts?: number;
+  /**
+   * Live markdown autoformatting while typing (`# `→heading, `- `→bullet,
+   * `1. `→numbered, `[] `→todo, `> `→quote, ```` ``` ````→code block,
+   * `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`). Each conversion is its
+   * own undo step, so one undo restores the literal text. Default true.
+   */
+  inputRules?: boolean;
+  /**
+   * Syntax highlighter for code blocks (colors only — it can never change the
+   * measured text). Defaults to the built-in lightweight highlighter; pass
+   * `null` to disable, or your own {@link Highlighter} (e.g. shiki-backed) for
+   * richer grammars.
+   */
+  highlighter?: Highlighter | null;
+  /**
+   * Composable feature bundles: custom nodes + input rules + commands as one
+   * unit (see {@link EditorExtension}). Extension schema merges over `schema`;
+   * extension rules run before the built-ins; commands run via {@link exec}.
+   */
+  extensions?: EditorExtension[];
 }
 
 export interface VisibleBlock {
@@ -128,6 +166,13 @@ export interface CaretRect {
   y: number;
   height: number;
   blockId: string;
+}
+
+/** One find() occurrence: a half-open text range within a block. */
+export interface FindMatch {
+  blockId: string;
+  start: number;
+  end: number;
 }
 
 export interface SelectionRect {
@@ -163,6 +208,10 @@ export class EditorController {
   private width: number;
   private overscan: number;
   private blockSpacing: number;
+  private maxDetailedLayouts: number;
+  private inputRulesEnabled: boolean;
+  private highlighter: Highlighter | null;
+  private extensions: ResolvedExtensions;
 
   private virtualizer: Virtualizer;
   private cache = new LayoutCache();
@@ -188,16 +237,28 @@ export class EditorController {
   private deepHandler: (events: Array<Y.YEvent<any>>) => void;
   private undoManager!: Y.UndoManager;
   private connected = false;
+  /** Selection captured by the last popped undo/redo stack item. */
+  private restoreSelection: Selection | null | undefined = undefined;
+  /** True after an input rule transformed the doc beyond the typed character. */
+  private inputRuleApplied = false;
 
   constructor(options: EditorOptions) {
     this.doc = options.doc ?? createNoteDoc();
     this.blocks = getBlocks(this.doc);
     this.measurer = options.measurer;
     this.typography = options.typography ?? DEFAULT_TYPOGRAPHY;
-    this.schema = createSchema(options.schema);
+    this.extensions = resolveExtensions(options.extensions);
+    // Extension nodes merge over host schema, which merges over built-ins.
+    this.schema = createSchema({
+      blocks: { ...(options.schema?.blocks ?? {}), ...(this.extensions.schema.blocks ?? {}) },
+      atoms: { ...(options.schema?.atoms ?? {}), ...(this.extensions.schema.atoms ?? {}) },
+    });
     this.width = options.width ?? 0;
     this.overscan = options.overscan ?? 800;
     this.blockSpacing = options.blockSpacing ?? 12;
+    this.maxDetailedLayouts = Math.max(1, options.maxDetailedLayouts ?? 256);
+    this.inputRulesEnabled = options.inputRules ?? true;
+    this.highlighter = options.highlighter === undefined ? defaultHighlighter : options.highlighter;
     this.virtualizer = new Virtualizer(lineHeightPx(this.typography) + this.blockSpacing);
 
     this.reindex();
@@ -289,7 +350,25 @@ export class EditorController {
     if (this.connected) return;
     this.connected = true;
     this.blocks.observeDeep(this.deepHandler);
-    this.undoManager = new Y.UndoManager(this.blocks, { captureTimeout: 250 });
+    // Track ONLY editor-originated transactions: persistence restores and
+    // collaboration providers use their own origins, so remote edits are never
+    // undoable locally. (Yjs adds the UndoManager itself so redo keeps working.)
+    this.undoManager = new Y.UndoManager(this.blocks, {
+      captureTimeout: 250,
+      trackedOrigins: new Set([LOCAL_ORIGIN]),
+    });
+    // Selection-aware undo: remember where the caret was when each stack item
+    // was created, and restore it when that item is undone/redone. A merged
+    // keystroke run (captureTimeout) keeps the selection of its FIRST edit, so
+    // undo lands at the start of the typed run, matching mature editors.
+    this.undoManager.on("stack-item-added", (e: { stackItem: { meta: Map<unknown, unknown> } }) => {
+      if (!e.stackItem.meta.has("selection")) {
+        e.stackItem.meta.set("selection", this.selection);
+      }
+    });
+    this.undoManager.on("stack-item-popped", (e: { stackItem: { meta: Map<unknown, unknown> } }) => {
+      this.restoreSelection = (e.stackItem.meta.get("selection") as Selection | null) ?? null;
+    });
   }
 
   /** Tear down document subscriptions but keep the controller reusable. */
@@ -306,12 +385,54 @@ export class EditorController {
     this.emitter.clear();
   }
 
+  /**
+   * Run a named extension command. Returns the command's result, or
+   * `undefined` when no such command is registered (see {@link hasCommand}).
+   */
+  exec(name: string, ...args: unknown[]): unknown {
+    const command = this.extensions.commands.get(name);
+    return command ? command(this, ...args) : undefined;
+  }
+
+  /** Whether an extension registered a command under `name`. */
+  hasCommand(name: string): boolean {
+    return this.extensions.commands.has(name);
+  }
+
   undo(): void {
-    if (this.connected) this.undoManager.undo();
+    this.historyStep(() => this.undoManager.undo());
   }
 
   redo(): void {
-    if (this.connected) this.undoManager.redo();
+    this.historyStep(() => this.undoManager.redo());
+  }
+
+  /** Run an undo/redo step, then restore the selection captured with it. */
+  private historyStep(step: () => void): void {
+    if (!this.connected) return;
+    this.restoreSelection = undefined;
+    step();
+    const sel = this.restoreSelection as Selection | null | undefined;
+    this.restoreSelection = undefined;
+    const valid = sel ? this.sanitizeSelection(sel) : null;
+    if (valid) {
+      this.selection = valid;
+      this.pendingMarks = null;
+      this.preferredX = null;
+      this.notify();
+    }
+  }
+
+  /** Clamp a remembered selection to the current doc; null if a block is gone. */
+  private sanitizeSelection(sel: Selection): Selection | null {
+    const fix = (p: Position): Position | null => {
+      const block = this.byId(p.blockId);
+      if (!block) return null;
+      return position(p.blockId, Math.min(p.offset, blockText(block).length));
+    };
+    const anchor = fix(sel.anchor);
+    const focus = fix(sel.focus);
+    return anchor && focus ? { anchor, focus } : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -343,10 +464,12 @@ export class EditorController {
     return this.schema.blocks[type] ?? { type, text: true };
   }
 
-  /** Effective typography for a text block, derived from its node. */
+  /** Effective typography for a text block, derived from its node (+ attrs). */
   private typographyFor(id: string): Typography {
     const node = this.nodeFor(id);
-    return node.typography ? node.typography(this.typography) : this.typography;
+    if (!node.typography) return this.typography;
+    const block = this.byId(id);
+    return node.typography(this.typography, block ? blockAttrs(block) : undefined);
   }
 
   private tKeyFor(id: string): string {
@@ -358,9 +481,9 @@ export class EditorController {
   }
 
   /** Public access to a block type's resolved typography (for renderers). */
-  getBlockTypography(type: BlockType): Typography {
+  getBlockTypography(type: BlockType, attrs?: Record<string, unknown>): Typography {
     const node = this.schema.blocks[type];
-    return node?.typography ? node.typography(this.typography) : this.typography;
+    return node?.typography ? node.typography(this.typography, attrs) : this.typography;
   }
 
   private atomResolver(): AtomResolver {
@@ -599,6 +722,15 @@ export class EditorController {
         }
         if (!measuredAny) break;
       }
+      // Bound detailed-geometry memory: keep the current window (plus overscan)
+      // hot and evict the least-recently-used detailed layouts beyond the cap.
+      const win = this.virtualizer.window(
+        this.viewport.scrollTop,
+        this.viewport.viewportHeight,
+        this.overscan,
+      );
+      const keep = new Set(win.items.map((it) => it.id));
+      this.cache.evictDetailed(keep, Math.max(this.maxDetailedLayouts, keep.size));
     });
   }
 
@@ -771,6 +903,34 @@ export class EditorController {
     return out;
   }
 
+  /**
+   * Rectangles (document space) for an ARBITRARY text range — the building
+   * block for host overlays like find-match highlights. Unlike
+   * {@link selectionRectsForViewport} it doesn't depend on the current
+   * selection, and it resolves offscreen blocks too (their detailed layout is
+   * computed on demand).
+   */
+  rectsForRange(start: Position, end: Position): SelectionRect[] {
+    const startIdx = this.indexOf(start.blockId);
+    const endIdx = this.indexOf(end.blockId);
+    if (startIdx < 0 || endIdx < 0 || startIdx > endIdx) return [];
+    const order = this.virtualizer.getOrder();
+    const out: SelectionRect[] = [];
+    for (let i = startIdx; i <= endIdx; i += 1) {
+      const id = order[i];
+      const layout = this.getLayout(id);
+      if (!layout) continue;
+      const from = id === start.blockId ? start.offset : 0;
+      const to = id === end.blockId ? end.offset : layout.length;
+      const top = this.contentTopOf(id);
+      const left = this.insetOf(id).left;
+      for (const r of selectionRects(layout, from, to, this.measurer)) {
+        out.push({ blockId: id, x: r.x + left, y: r.y + top, width: r.width, height: r.height });
+      }
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------------------
   // Selection
   // ---------------------------------------------------------------------------
@@ -903,6 +1063,41 @@ export class EditorController {
   getListLevel(id: string): number {
     const block = this.byId(id);
     return block ? blockListLevel(block) : 0;
+  }
+
+  /** A heading block's level (1–3); 1 for non-headings or when unset. */
+  getHeadingLevel(id: string): number {
+    const block = this.byId(id);
+    return block ? blockHeadingLevel(block) : 1;
+  }
+
+  /** A code block's language (normalized alias, e.g. "javascript"→"js"). */
+  getCodeLang(id: string): string {
+    const block = this.byId(id);
+    if (!block || blockType(block) !== "code") return "";
+    const lang = blockAttrs(block).lang;
+    return normalizeLang(typeof lang === "string" ? lang : undefined);
+  }
+
+  /** Set a code block's language (drives syntax highlighting). */
+  setCodeLang(id: string, lang: string): void {
+    const block = this.byId(id);
+    if (!block || blockType(block) !== "code") return;
+    this.setBlockAttr(id, "lang", lang || undefined);
+  }
+
+  /**
+   * Syntax tokens for a code block's current text — colors only, computed by
+   * the configured {@link Highlighter}. Empty for non-code blocks, unknown
+   * languages, or when highlighting is disabled.
+   */
+  getHighlightTokens(id: string): HighlightToken[] {
+    if (!this.highlighter) return [];
+    const block = this.byId(id);
+    if (!block || blockType(block) !== "code") return [];
+    const lang = this.getCodeLang(id);
+    if (!lang) return [];
+    return this.highlighter(textToPlain(blockText(block)), lang);
   }
 
   /** The rendered left content inset for a list item at its current level. */
@@ -1122,6 +1317,96 @@ export class EditorController {
     const effective = this.pendingMarks ?? base;
     const after = insertText(this.doc, this.blocks, startPos, text, fullAttributes(effective));
     this.setSelection(caret(after));
+    // Live markdown autoformat — only single keystrokes qualify, so pasted or
+    // programmatic text never reformats.
+    if (this.inputRulesEnabled && text.length === 1) this.applyInputRules(after);
+  }
+
+  /**
+   * Check + apply markdown input rules at a caret that just received a typed
+   * character. Each conversion breaks the undo capture group first, so a
+   * single undo restores the literal markdown text.
+   */
+  private applyInputRules(pos: Position): void {
+    const block = this.byId(pos.blockId);
+    if (!block || !this.nodeFor(pos.blockId).text) return;
+    const type = blockType(block);
+    if (type === "code") return; // never autoformat inside code blocks
+    const text = blockText(block);
+    const before = textToPlain(text).slice(0, pos.offset);
+
+    if (type === "paragraph") {
+      // Extension rules first (so a host can claim a prefix like ":: "
+      // before the built-ins see it), then the built-in markdown set.
+      let bm = null as ReturnType<typeof matchBlockRule>;
+      for (const rule of this.extensions.blockRules) {
+        bm = rule(before);
+        if (bm) break;
+      }
+      bm ??= matchBlockRule(before);
+      if (bm) {
+        if (this.connected) this.undoManager.stopCapturing();
+        this.doc.transact(() => {
+          text.delete(0, bm.prefixLength);
+          block.set("type", bm.type);
+          const attrMap = block.get("attrs");
+          if (attrMap instanceof Y.Map) {
+            if (isListBlockType(bm.type)) attrMap.set(LIST_LEVEL_ATTR, 0);
+            for (const [k, v] of Object.entries(bm.attrs ?? {})) attrMap.set(k, v);
+          }
+        }, LOCAL_ORIGIN);
+        this.setSelection(caret(position(pos.blockId, 0)));
+        if (this.connected) this.undoManager.stopCapturing();
+        this.inputRuleApplied = true;
+        return;
+      }
+    }
+
+    let im = null as ReturnType<typeof matchInlineRule>;
+    for (const rule of this.extensions.inlineRules) {
+      im = rule(before);
+      if (im) break;
+    }
+    im ??= matchInlineRule(before);
+    if (im) {
+      // Never treat characters of an existing code span as delimiters/content:
+      // if ANY character of the would-be match (except the just-typed closer)
+      // already carries the code mark, the delimiters are literal code text.
+      const items = textToInline(text);
+      const scanEnd = im.end - im.close;
+      const touchesCode = items.some((it) => {
+        const len = it.atom ? 1 : it.text.length;
+        return it.marks?.code && it.start < scanEnd && it.start + len > im.start;
+      });
+      if (touchesCode) return;
+      if (this.connected) this.undoManager.stopCapturing();
+      this.doc.transact(() => {
+        text.delete(im.end - im.close, im.close);
+        text.format(im.start + im.open, im.end - im.close - im.start - im.open, {
+          [im.mark]: true,
+        });
+        text.delete(im.start, im.open);
+      }, LOCAL_ORIGIN);
+      const after = im.end - im.open - im.close;
+      this.setSelection(caret(position(pos.blockId, after)));
+      // The next character typed continues UNmarked (the span is closed).
+      this.pendingMarks = { ...marksInRange(text, after, after), [im.mark]: false };
+      if (this.connected) this.undoManager.stopCapturing();
+      this.inputRuleApplied = true;
+      this.notify();
+    }
+  }
+
+  /**
+   * Whether an input rule transformed the document beyond the last typed
+   * character (block conversion / delimiter stripping), clearing the flag.
+   * Views use this after a native keystroke read-back to know the DOM must be
+   * re-rendered from the model rather than trusting what the browser painted.
+   */
+  takeInputRuleApplied(): boolean {
+    const v = this.inputRuleApplied;
+    this.inputRuleApplied = false;
+    return v;
   }
 
   insertParagraphBreak(): void {
@@ -1151,6 +1436,23 @@ export class EditorController {
     const sel = this.selection;
     if (sel && !isCollapsed(sel)) this.deleteBackward();
     this.insertText("\n");
+  }
+
+  /**
+   * Move a block to `toIndex` (its final document index) as a single,
+   * self-contained undo step. The block's id is preserved, so the selection —
+   * and any host UI keyed on the id — stays valid across the move.
+   */
+  moveBlock(id: string, toIndex: number): boolean {
+    if (this.connected) this.undoManager.stopCapturing();
+    const moved = moveBlock(this.doc, this.blocks, id, toIndex);
+    if (moved && this.connected) this.undoManager.stopCapturing();
+    return moved;
+  }
+
+  /** A block's current document index, or -1 if it doesn't exist. */
+  getBlockIndex(id: string): number {
+    return this.indexOf(id);
   }
 
   /** Insert a new block (typically a custom atomic node) after the selection. */
@@ -1368,7 +1670,7 @@ export class EditorController {
   private deleteBlock(id: string): void {
     const idx = this.indexOf(id);
     if (idx < 0) return;
-    this.doc.transact(() => this.blocks.delete(idx, 1));
+    this.doc.transact(() => this.blocks.delete(idx, 1), LOCAL_ORIGIN);
   }
 
   // ---------------------------------------------------------------------------
@@ -1426,6 +1728,227 @@ export class EditorController {
     formatRange(this.doc, this.blocks, start, end, mark, active[mark] ? null : true);
   }
 
+  // ---------------------------------------------------------------------------
+  // Links
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Apply `url` as a link. The URL is sanitized ({@link sanitizeUrl}) — unsafe
+   * schemes such as `javascript:` are rejected and bare domains get `https://`.
+   *
+   * - Range selection → the whole range is linked.
+   * - Collapsed caret on an existing link → that link run is retargeted.
+   * - Collapsed caret elsewhere → the URL itself is inserted as linked text.
+   * - An empty/invalid URL removes the link instead (see {@link removeLink}).
+   *
+   * Returns whether the document changed.
+   */
+  setLink(url: string): boolean {
+    const sel = this.selection;
+    if (!sel) return false;
+    const clean = sanitizeUrl(url);
+    if (!clean) return this.removeLink();
+    if (isCollapsed(sel)) {
+      const id = sel.focus.blockId;
+      const block = this.byId(id);
+      if (!block || !this.nodeFor(id).text) return false;
+      const bounds = linkBoundsAt(blockText(block), sel.focus.offset);
+      if (bounds) {
+        formatRange(
+          this.doc,
+          this.blocks,
+          position(id, bounds.start),
+          position(id, bounds.end),
+          "link",
+          clean,
+        );
+        return true;
+      }
+      const after = insertText(this.doc, this.blocks, sel.focus, clean, {
+        ...fullAttributes({}),
+        link: clean,
+      });
+      this.setSelection(caret(after));
+      return true;
+    }
+    const { start, end } = orderedRange(sel, this.indexOf);
+    formatRange(this.doc, this.blocks, start, end, "link", clean);
+    return true;
+  }
+
+  /**
+   * Remove the link at the selection: a range selection unlinks the range; a
+   * collapsed caret on a link unlinks that whole contiguous run. Returns
+   * whether the document changed.
+   */
+  removeLink(): boolean {
+    const sel = this.selection;
+    if (!sel) return false;
+    if (isCollapsed(sel)) {
+      const id = sel.focus.blockId;
+      const block = this.byId(id);
+      if (!block || !this.nodeFor(id).text) return false;
+      const bounds = linkBoundsAt(blockText(block), sel.focus.offset);
+      if (!bounds) return false;
+      formatRange(
+        this.doc,
+        this.blocks,
+        position(id, bounds.start),
+        position(id, bounds.end),
+        "link",
+        null,
+      );
+      return true;
+    }
+    const { start, end } = orderedRange(sel, this.indexOf);
+    formatRange(this.doc, this.blocks, start, end, "link", null);
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Content export
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Every block as plain content — type, styled inline runs, attrs. The
+   * framework-agnostic export surface (`docFromContent` is its inverse).
+   */
+  getContentBlocks(): ContentBlock[] {
+    const out: ContentBlock[] = [];
+    for (const id of this.virtualizer.getOrder()) {
+      const block = this.byId(id);
+      if (!block) continue;
+      const attrs = blockAttrs(block);
+      out.push({
+        type: blockType(block),
+        items: this.getInline(id),
+        ...(Object.keys(attrs).length ? { attrs } : {}),
+      });
+    }
+    return out;
+  }
+
+  /** The whole document as GitHub-flavored markdown. */
+  exportMarkdown(): string {
+    return blocksToMarkdown(this.getContentBlocks());
+  }
+
+  /**
+   * The document's heading outline (id, level, text) in order — drives tables
+   * of contents and the accessible outline nav. O(blocks), but reads text only
+   * for headings, so it's cheap even on very large notes.
+   */
+  getOutline(): Array<{ id: string; level: number; text: string }> {
+    const out: Array<{ id: string; level: number; text: string }> = [];
+    for (const id of this.virtualizer.getOrder()) {
+      const block = this.byId(id);
+      if (!block || blockType(block) !== "heading") continue;
+      out.push({ id, level: blockHeadingLevel(block), text: textToPlain(blockText(block)) });
+    }
+    return out;
+  }
+
+  /** A block's slot top in document space (px) — for scroll-to-block UI. */
+  getBlockTop(id: string): number {
+    return this.virtualizer.topOf(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Find & replace
+  // ---------------------------------------------------------------------------
+
+  /**
+   * All non-overlapping occurrences of `query` across the document's text
+   * blocks, in document order. Case-insensitive by default. Inline atoms
+   * occupy one placeholder character and never match text queries.
+   */
+  findAll(query: string, opts?: { caseSensitive?: boolean }): FindMatch[] {
+    const out: FindMatch[] = [];
+    if (!query) return out;
+    const cs = opts?.caseSensitive ?? false;
+    const q = cs ? query : query.toLowerCase();
+    for (const id of this.virtualizer.getOrder()) {
+      const block = this.byId(id);
+      if (!block || !this.nodeFor(id).text) continue;
+      const plain = textToPlain(blockText(block));
+      const hay = cs ? plain : plain.toLowerCase();
+      let i = 0;
+      while ((i = hay.indexOf(q, i)) !== -1) {
+        out.push({ blockId: id, start: i, end: i + q.length });
+        i += q.length;
+      }
+    }
+    return out;
+  }
+
+  /** Select a match (so the host can highlight/scroll to it). */
+  selectMatch(match: FindMatch): void {
+    this.setSelection({
+      anchor: position(match.blockId, match.start),
+      focus: position(match.blockId, match.end),
+    });
+  }
+
+  /**
+   * Replace one match, inheriting the marks at the match start. The caret
+   * lands after the replacement. Returns whether the document changed.
+   */
+  replaceMatch(match: FindMatch, replacement: string): boolean {
+    const block = this.byId(match.blockId);
+    if (!block || !this.nodeFor(match.blockId).text) return false;
+    const text = blockText(block);
+    if (match.end > text.length || match.end <= match.start) return false;
+    if (this.connected) this.undoManager.stopCapturing();
+    this.doc.transact(() => {
+      const attrs = fullAttributes(marksInRange(text, match.start, match.start + 1));
+      text.delete(match.start, match.end - match.start);
+      if (replacement) text.insert(match.start, replacement, attrs);
+    }, LOCAL_ORIGIN);
+    this.setSelection(caret(position(match.blockId, match.start + replacement.length)));
+    return true;
+  }
+
+  /**
+   * Replace every occurrence of `query` in one transaction (one undo step).
+   * Returns the number of replacements.
+   */
+  replaceAll(query: string, replacement: string, opts?: { caseSensitive?: boolean }): number {
+    const matches = this.findAll(query, opts);
+    if (matches.length === 0) return 0;
+    if (this.connected) this.undoManager.stopCapturing();
+    this.doc.transact(() => {
+      // Back-to-front so earlier offsets stay valid within each block.
+      for (let i = matches.length - 1; i >= 0; i -= 1) {
+        const m = matches[i];
+        const block = this.byId(m.blockId);
+        if (!block) continue;
+        const text = blockText(block);
+        const attrs = fullAttributes(marksInRange(text, m.start, m.start + 1));
+        text.delete(m.start, m.end - m.start);
+        if (replacement) text.insert(m.start, replacement, attrs);
+      }
+    }, LOCAL_ORIGIN);
+    if (this.connected) this.undoManager.stopCapturing();
+    const last = matches[matches.length - 1];
+    this.setSelection(caret(position(last.blockId, last.start + replacement.length)));
+    return matches.length;
+  }
+
+  /**
+   * URL of the link under the caret (whole run, left-biased like mark
+   * resolution) or common to the entire selection; `null` when none.
+   */
+  getActiveLink(): string | null {
+    const sel = this.selection;
+    if (!sel) return null;
+    if (isCollapsed(sel)) {
+      const block = this.byId(sel.focus.blockId);
+      if (!block || !this.nodeFor(sel.focus.blockId).text) return null;
+      return linkBoundsAt(blockText(block), sel.focus.offset)?.url ?? null;
+    }
+    return this.getActiveMarks().link ?? null;
+  }
+
   /**
    * If the caret sits in an EMPTY, non-paragraph *text* block (heading, quote,
    * code, …), reset it to a paragraph. The view calls this after a deletion so
@@ -1454,7 +1977,7 @@ export class EditorController {
     this.doc.transact(() => {
       if (value === undefined) attrMap.delete(key);
       else attrMap.set(key, value);
-    });
+    }, LOCAL_ORIGIN);
   }
 
   private setListLevel(id: string, level: number): void {
@@ -1480,7 +2003,7 @@ export class EditorController {
         attrMap.set("level", next);
         changed = true;
       }
-    });
+    }, LOCAL_ORIGIN);
     return changed;
   }
 
@@ -1492,7 +2015,7 @@ export class EditorController {
     return this.adjustListLevelAtSelection(-1);
   }
 
-  setBlockTypeAtSelection(type: BlockType): void {
+  setBlockTypeAtSelection(type: BlockType, attrs?: Record<string, unknown>): void {
     const sel = this.selection;
     if (!sel) return;
     const { start, end } = orderedRange(sel, this.indexOf);
@@ -1510,14 +2033,29 @@ export class EditorController {
         if (isListBlockType(type)) {
           const level = isListBlockType(previous) ? blockListLevel(block) : 0;
           attrMap.set("level", normalizeListLevel(level));
+        } else if (type === "heading") {
+          // `level` doubles as the heading level (1–3); normalize or reset it
+          // so a former list item's nesting can't leak in as a heading level.
+          attrMap.set(
+            HEADING_LEVEL_ATTR,
+            normalizeHeadingLevel(attrs?.[HEADING_LEVEL_ATTR] ?? 1),
+          );
         } else {
           attrMap.delete("level");
         }
         // `checked` only means anything on a todo item — drop it on any other
         // type so a former todo doesn't carry a stale (or reappearing) state.
         if (type !== "todo-list") attrMap.delete(TODO_CHECKED_ATTR);
+        // Merge any remaining explicit attrs (skip the ones handled above).
+        if (attrs) {
+          for (const [k, v] of Object.entries(attrs)) {
+            if (k === "level" || k === TODO_CHECKED_ATTR) continue;
+            if (v === undefined) attrMap.delete(k);
+            else attrMap.set(k, v);
+          }
+        }
       }
-    });
+    }, LOCAL_ORIGIN);
   }
 
   blockTypeAtSelection(): BlockType | null {
@@ -1531,12 +2069,24 @@ export class EditorController {
    *  attrs (e.g. an image's src/ratio) so it doesn't reset to defaults. */
   setBlockAttrsAtSelection(attrs: Record<string, unknown>): void {
     const id = this.selection?.focus.blockId;
-    const block = id ? this.byId(id) : undefined;
-    if (!block) return;
-    const attrMap = block.get("attrs");
+    if (id) this.setBlockAttrs(id, attrs);
+  }
+
+  /**
+   * Merge attrs onto a block by id (delete a key by passing `undefined`).
+   * This is how a custom block's renderer persists its own state — e.g. a
+   * table writing its cells — so the change syncs, undoes, and re-measures
+   * like any other edit.
+   */
+  setBlockAttrs(id: string, attrs: Record<string, unknown>): void {
+    const block = this.byId(id);
+    const attrMap = block?.get("attrs");
     if (!(attrMap instanceof Y.Map)) return;
     this.doc.transact(() => {
-      for (const [k, v] of Object.entries(attrs)) attrMap.set(k, v);
-    });
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v === undefined) attrMap.delete(k);
+        else attrMap.set(k, v);
+      }
+    }, LOCAL_ORIGIN);
   }
 }

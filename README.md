@@ -214,11 +214,13 @@ The example registers all three (`/divider`, `/image`, `/mention`) — see
 - **Phase 2 (done):** caret geometry from layout, click + drag hit-testing, selection, insert/delete, split/merge, full keyboard nav (incl. vertical movement with preferred-x), undo/redo, clipboard.
 - **Phase 3 (done):** inline marks via `Y.Text` attributes, Pretext rich-inline layout, bold/italic/code/underline/strike rendering, selection rectangles across styled text, heading/quote/code block types.
 - **Extensibility (done):** schema-driven block + inline-atom registry (measurable custom nodes), renderer registries, demo divider/image/mention.
+- **Production hardening (done):** links (`setLink`/`removeLink`, Cmd+K, sanitized URLs incl. pasted HTML), live markdown input rules (`# `, `- `, `1. `, `[] `, `> `, ``` ``` ```, `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`) with single-undo reversal, heading levels 1–3 (typography, clipboard `<h1>`–`<h3>` fidelity), origin-scoped selection-restoring undo, LRU eviction of detailed layouts (`maxDetailedLayouts`), and per-block ARIA semantics (heading/blockquote/listitem/aria-checked).
+- **Parity batch (done):** markdown import/export (`blocksToMarkdown`/`markdownToBlocks`/`exportMarkdown`, markdown-aware paste), live code-block syntax highlighting (built-in tokenizer for js/ts/json/py/css/html/sh/md, pluggable `Highlighter`, ```` ```lang ```` fences), block reordering (drag handle + Cmd/Ctrl+Shift+↑/↓, `moveBlock`), find & replace (`findAll`/`replaceAll` + the demo's Cmd+F bar with overlay match highlights via `rectsForRange`), an accessible document-outline landmark (`getOutline`), and interactive custom blocks (`setBlockAttrs`, in-place React reconciliation, native widget events) demonstrated by the example app's editable `/table` node.
+- **Extension system (done):** composable `extensions` bundles (custom nodes + input rules + `exec` commands), host `keymap` prop resolved before built-in shortcuts, and range-geometry APIs for host overlays — the pieces hosts need to build links-menus, comments, callouts, etc. without forking the engine.
 
 ### Known limitations (MVP)
 
 - Greedy (not Knuth–Plass) line breaking; long unbreakable words break per-character.
-- Detailed layouts for visited blocks stay cached (no LRU eviction yet).
 - One active note Y.Doc held in memory at a time (by design).
 - Atom width is measured with the base typography (not the host block's), so an inline atom inside a heading uses body-size metrics.
 - No collaborative transport wired up — but every edit is already a Yjs update, so a provider drops straight in.

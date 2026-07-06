@@ -1,6 +1,10 @@
 import { createMonospaceMeasurer } from "@wingleeio/ori-pretext";
 import { describe, expect, it } from "vitest";
+import * as Y from "yjs";
+import { docFromContent } from "./content";
 import { EditorController } from "./controller";
+import { markdownToBlocks } from "./markdown";
+import { applyUpdate } from "./persistence";
 import { blockId, createNoteDoc, getBlocks } from "./schema";
 import { isCollapsed } from "./selection";
 
@@ -79,6 +83,177 @@ describe("EditorController", () => {
     expect(ed.getBlockText(firstId)).toBe("");
     ed.redo();
     expect(ed.getBlockText(firstId)).toBe("hello");
+  });
+
+  it("undo restores the caret to where the edit began; redo to where it ended", () => {
+    const { ed, firstId } = make(["hello"]);
+    ed.setSelection(at(firstId, 5));
+    ed.insertText(" world"); // caret now at 11
+    ed.undo(); // caret returns to the edit site
+    expect(ed.getBlockText(firstId)).toBe("hello");
+    expect(ed.getSnapshot().selection).toEqual(at(firstId, 5));
+    // Move away, then redo: the caret returns to where it was when the undo
+    // was taken (the end of the typed run).
+    ed.setSelection(at(firstId, 0));
+    ed.redo();
+    expect(ed.getBlockText(firstId)).toBe("hello world");
+    expect(ed.getSnapshot().selection).toEqual(at(firstId, 11));
+  });
+
+  it("undo returns the caret to the edit site even after moving away", () => {
+    const { ed, firstId } = make(["hello"]);
+    ed.setSelection(at(firstId, 5));
+    ed.insertText(" world");
+    ed.setSelection(at(firstId, 0)); // wander off
+    ed.undo();
+    expect(ed.getBlockText(firstId)).toBe("hello");
+    expect(ed.getSnapshot().selection).toEqual(at(firstId, 5));
+  });
+
+  it("does not track remote-origin updates on the local undo stack", async () => {
+    const { ed, doc, firstId } = make(["local"]);
+    ed.setSelection(at(firstId, 5));
+    ed.insertText("!");
+    // New capture group for the remote edit (captureTimeout is 250ms).
+    await new Promise((r) => setTimeout(r, 300));
+    // Simulate a remote peer editing the same block.
+    const remote = new Y.Doc();
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
+    const remoteBlocks = getBlocks(remote);
+    remote.transact(() => {
+      (remoteBlocks.get(0).get("text") as Y.Text).insert(0, "REMOTE ");
+    });
+    applyUpdate(doc, Y.encodeStateAsUpdate(remote)); // applied under REMOTE_ORIGIN
+    expect(ed.getBlockText(firstId)).toBe("REMOTE local!");
+    // Undo must revert only the LOCAL edit, leaving the remote text intact.
+    ed.undo();
+    expect(ed.getBlockText(firstId)).toBe("REMOTE local");
+    ed.undo(); // nothing local left to undo
+    expect(ed.getBlockText(firstId)).toBe("REMOTE local");
+  });
+
+  it("exportMarkdown serializes the doc; docFromContent round-trips it", () => {
+    const { ed, doc } = make(["Title", "Body with style", "item"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    ed.setSelection(at(ids[0], 0));
+    ed.setBlockTypeAtSelection("heading", { level: 2 });
+    ed.setSelection({ anchor: { blockId: ids[1], offset: 10 }, focus: { blockId: ids[1], offset: 15 } });
+    ed.toggleMark("bold");
+    ed.setSelection(at(ids[2], 0));
+    ed.setBlockTypeAtSelection("bullet-list");
+
+    const md = ed.exportMarkdown();
+    expect(md).toContain("## Title");
+    expect(md).toContain("Body with **style**");
+    expect(md).toContain("- item");
+
+    // Round-trip: markdown → blocks → new doc → same markdown.
+    const doc2 = docFromContent(markdownToBlocks(md));
+    const ed2 = new EditorController({ doc: doc2, measurer: createMonospaceMeasurer(), width: 200 });
+    expect(ed2.exportMarkdown()).toBe(md);
+  });
+
+  it("findAll locates matches across blocks (case-insensitive by default)", () => {
+    const { ed, doc } = make(["Foo bar foo", "no hits here", "FOO"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    const matches = ed.findAll("foo");
+    expect(matches).toEqual([
+      { blockId: ids[0], start: 0, end: 3 },
+      { blockId: ids[0], start: 8, end: 11 },
+      { blockId: ids[2], start: 0, end: 3 },
+    ]);
+    expect(ed.findAll("foo", { caseSensitive: true })).toEqual([
+      { blockId: ids[0], start: 8, end: 11 },
+    ]);
+    expect(ed.findAll("")).toEqual([]);
+  });
+
+  it("replaceMatch replaces one occurrence, inheriting marks", () => {
+    const { ed, doc } = make(["say hello now"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    ed.setSelection({ anchor: { blockId: ids[0], offset: 4 }, focus: { blockId: ids[0], offset: 9 } });
+    ed.toggleMark("bold");
+    const [m] = ed.findAll("hello");
+    expect(ed.replaceMatch(m, "goodbye")).toBe(true);
+    expect(ed.getBlockText(ids[0])).toBe("say goodbye now");
+    ed.setSelection({ anchor: { blockId: ids[0], offset: 4 }, focus: { blockId: ids[0], offset: 11 } });
+    expect(ed.getActiveMarks().bold).toBe(true); // replacement stays bold
+  });
+
+  it("replaceAll replaces everywhere in one undo step", () => {
+    const { ed, doc } = make(["cat and cat", "the cat sat"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    expect(ed.replaceAll("cat", "dog")).toBe(3);
+    expect(ed.getBlockText(ids[0])).toBe("dog and dog");
+    expect(ed.getBlockText(ids[1])).toBe("the dog sat");
+    ed.undo();
+    expect(ed.getBlockText(ids[0])).toBe("cat and cat");
+    expect(ed.getBlockText(ids[1])).toBe("the cat sat");
+    // Empty replacement deletes occurrences.
+    expect(ed.replaceAll("cat ", "")).toBe(2);
+    expect(ed.getBlockText(ids[0])).toBe("and cat");
+    expect(ed.getBlockText(ids[1])).toBe("the sat");
+  });
+
+  it("moveBlock reorders while preserving id, marks and selection", () => {
+    const { ed, doc } = make(["alpha", "beta", "gamma"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    // Style "beta" so we can prove the rich delta survives the move.
+    ed.setSelection({ anchor: { blockId: ids[1], offset: 0 }, focus: { blockId: ids[1], offset: 4 } });
+    ed.toggleMark("bold");
+    ed.setSelection(at(ids[1], 2));
+
+    expect(ed.moveBlock(ids[1], 2)).toBe(true);
+    expect(ed.blockIds()).toEqual([ids[0], ids[2], ids[1]]);
+    expect(ed.getBlockText(ids[1])).toBe("beta");
+    expect(ed.getSnapshot().selection).toEqual(at(ids[1], 2)); // selection survives
+    const inline = ed.getInline(ids[1]);
+    expect(inline[0].marks?.bold).toBe(true); // marks survive the clone
+
+    // Move to the front; out-of-range clamps; same index is a no-op.
+    expect(ed.moveBlock(ids[1], 0)).toBe(true);
+    expect(ed.blockIds()[0]).toBe(ids[1]);
+    expect(ed.moveBlock(ids[1], -5)).toBe(false); // clamped to 0 == current
+    expect(ed.moveBlock("missing", 1)).toBe(false);
+  });
+
+  it("moveBlock is a single undo step", () => {
+    const { ed, doc } = make(["a", "b"]);
+    const ids = getBlocks(doc).map((b) => blockId(b));
+    ed.moveBlock(ids[0], 1);
+    expect(ed.blockIds()).toEqual([ids[1], ids[0]]);
+    ed.undo();
+    expect(ed.blockIds()).toEqual([ids[0], ids[1]]);
+    ed.redo();
+    expect(ed.blockIds()).toEqual([ids[1], ids[0]]);
+  });
+
+  it("heading levels: set via attrs, expose level, and vary typography", () => {
+    const { ed, firstId } = make(["Title"]);
+    ed.setSelection(at(firstId, 0));
+    ed.setBlockTypeAtSelection("heading", { level: 2 });
+    expect(ed.getBlockType(firstId)).toBe("heading");
+    expect(ed.getHeadingLevel(firstId)).toBe(2);
+    const t1 = ed.getBlockTypography("heading", { level: 1 });
+    const t2 = ed.getBlockTypography("heading", { level: 2 });
+    const t3 = ed.getBlockTypography("heading", { level: 3 });
+    expect(t1.fontSize).toBeGreaterThan(t2.fontSize);
+    expect(t2.fontSize).toBeGreaterThan(t3.fontSize);
+    // Levels clamp to 1–3 and default to 1.
+    ed.setBlockTypeAtSelection("heading", { level: 99 });
+    expect(ed.getHeadingLevel(firstId)).toBe(3);
+    ed.setBlockTypeAtSelection("heading");
+    expect(ed.getHeadingLevel(firstId)).toBe(1);
+  });
+
+  it("a former list item's nesting level can't leak in as a heading level", () => {
+    const { ed, firstId } = make(["item"]);
+    ed.setSelection(at(firstId, 0));
+    ed.setBlockTypeAtSelection("bullet-list");
+    ed.increaseListLevelAtSelection();
+    ed.increaseListLevelAtSelection(); // list level 2
+    ed.setBlockTypeAtSelection("heading");
+    expect(ed.getHeadingLevel(firstId)).toBe(1);
   });
 
   it("toggleMark on a range and getActiveMarks", () => {

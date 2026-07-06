@@ -11,7 +11,13 @@
  */
 export * from "./schema";
 export * from "./selection";
+export * from "./content";
 export * from "./delta";
+export * from "./extension";
+export * from "./highlight";
+export * from "./inputrules";
+export * from "./link";
+export * from "./markdown";
 export * from "./persistence";
 export {
   DEFAULT_SCHEMA,
@@ -34,6 +40,7 @@ export {
   splitBlock,
   mergeWithPrevious,
   formatRange,
+  moveBlock,
   setBlockType,
   insertInlineEmbed,
   insertBlockAfter,
@@ -48,6 +55,7 @@ export type {
   EditorSnapshot,
   VisibleBlock,
   CaretRect,
+  FindMatch,
   SelectionRect,
   MoveDirection,
 } from "./controller";

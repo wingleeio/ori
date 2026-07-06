@@ -161,6 +161,42 @@ export function activeMarks(text: Y.Text, from: number, to: number): Marks {
   return common ?? {};
 }
 
+/**
+ * Bounds `[start, end)` and URL of the contiguous link run containing the
+ * caret at `offset`, or `null` when the caret isn't on a link. Adjacent runs
+ * with the SAME url merge (bold text inside a link splits the delta ops but
+ * not the link); the caret "is on" a link under the same left-biased rule as
+ * {@link activeMarks} (marks come from the character before the caret).
+ */
+export function linkBoundsAt(
+  text: Y.Text,
+  offset: number,
+): { start: number; end: number; url: string } | null {
+  const items = textToInline(text);
+  const probe = Math.max(0, offset - 1);
+  let runStart = 0;
+  let runEnd = 0;
+  let runUrl: string | undefined;
+  let hit: { start: number; end: number; url: string } | null = null;
+  const flush = () => {
+    if (runUrl && probe >= runStart && probe < runEnd) {
+      hit = { start: runStart, end: runEnd, url: runUrl };
+    }
+  };
+  for (const item of items) {
+    const len = item.atom ? 1 : item.text.length;
+    const url = item.marks?.link;
+    if (url !== runUrl) {
+      flush();
+      runStart = item.start;
+      runUrl = url;
+    }
+    runEnd = item.start + len;
+  }
+  flush();
+  return hit;
+}
+
 /** Marks common to both sets — a mark is kept only if present (and equal) in each. */
 export function intersectMarks(a: Marks, b: Marks): Marks {
   const out: Marks = {};

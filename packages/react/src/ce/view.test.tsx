@@ -267,3 +267,116 @@ describe("EditorView input routing (beforeinput)", () => {
     expect(text(0)).toBe("aef");
   });
 });
+
+describe("host keymap", () => {
+  function setupWithKeymap(texts: string[], keymap: Record<string, (e: EditorController) => boolean | void>) {
+    const editor = makeEditor(texts);
+    const ids = getBlocks(editor.doc).map((b) => blockId(b));
+    const { container } = render(<NoteEditor editor={editor} keymap={keymap} />);
+    const ce = container.querySelector(".ori-ce") as HTMLElement;
+    return { editor, ids, ce };
+  }
+
+  it("runs a matching binding before built-ins and consumes the event on true", () => {
+    let calls = 0;
+    const { ce, editor, ids } = setupWithKeymap(["hello"], {
+      "Mod-b": (ed) => {
+        calls += 1;
+        ed.setBlockTypeAtSelection("quote"); // override built-in bold
+        return true;
+      },
+    });
+    caretDom(ce, 0, 2);
+    const e = new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true });
+    ce.dispatchEvent(e);
+    expect(calls).toBe(1);
+    expect(e.defaultPrevented).toBe(true);
+    expect(editor.getBlockType(ids[0])).toBe("quote"); // handler ran, bold didn't
+  });
+
+  it("a non-matching binding falls through to the built-ins", () => {
+    const { ce, editor } = setupWithKeymap(["hello"], {
+      "Mod-Shift-x": () => true,
+    });
+    selectDom(ce, 0, 0, 5);
+    const e = new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true });
+    ce.dispatchEvent(e);
+    expect(editor.getActiveMarks().bold).toBe(true); // built-in Cmd+B still works
+  });
+});
+
+describe("block ARIA semantics", () => {
+  it("headings expose role/aria-level and per-level data attribute", () => {
+    const { ce, editor } = setup(["Title"]);
+    act(() => editor.setBlockTypeAtSelection("heading", { level: 2 }));
+    const el = ce.querySelector("[data-block-id]") as HTMLElement;
+    expect(el.getAttribute("role")).toBe("heading");
+    expect(el.getAttribute("aria-level")).toBe("2");
+    expect(el.getAttribute("data-heading-level")).toBe("2");
+    // Converting back to a paragraph clears the semantics.
+    act(() => editor.setBlockTypeAtSelection("paragraph"));
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.getAttribute("aria-level")).toBeNull();
+  });
+
+  it("list items expose listitem/aria-level; todos expose aria-checked", () => {
+    const { ce, editor, ids } = setup(["item"]);
+    act(() => editor.setBlockTypeAtSelection("todo-list"));
+    const el = ce.querySelector("[data-block-id]") as HTMLElement;
+    expect(el.getAttribute("role")).toBe("listitem");
+    expect(el.getAttribute("aria-level")).toBe("1");
+    expect(el.getAttribute("aria-checked")).toBe("false");
+    act(() => void editor.toggleTodoChecked(ids[0]));
+    expect(el.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("quotes expose role=blockquote and the root is a labelled textbox", () => {
+    const { ce, editor } = setup(["quoted"]);
+    act(() => editor.setBlockTypeAtSelection("quote"));
+    const el = ce.querySelector("[data-block-id]") as HTMLElement;
+    expect(el.getAttribute("role")).toBe("blockquote");
+    expect(ce.getAttribute("role")).toBe("textbox");
+    expect(ce.getAttribute("aria-multiline")).toBe("true");
+  });
+});
+
+describe("markdown input rules through the native typing path", () => {
+  /** Simulate the browser natively painting `domText` into block `i`, caret at end. */
+  function nativeInput(ce: HTMLElement, i: number, domText: string) {
+    const blockEl = ce.querySelectorAll("[data-block-id]")[i] as HTMLElement;
+    blockEl.textContent = domText;
+    const tn = blockEl.firstChild ?? blockEl;
+    const r = document.createRange();
+    r.setStart(tn, (tn.textContent ?? "").length);
+    r.collapse(true);
+    const s = window.getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+    ce.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    return blockEl;
+  }
+
+  it('typing "# " natively converts the block and repaints the stripped prefix', () => {
+    const { ce, editor, ids } = setup(["#"]);
+    caretDom(ce, 0, 1);
+    // The browser paints the trigger space; beforeinput chose the native path.
+    beforeinput(ce, "insertText", " ");
+    const blockEl = nativeInput(ce, 0, "# ");
+    expect(editor.getBlockType(ids[0])).toBe("heading");
+    expect(editor.getBlockText(ids[0])).toBe("");
+    // The DOM was re-rendered from the model — the literal "# " is gone.
+    expect(blockEl.textContent).toBe("");
+    expect(blockEl.className).toContain("ori-block-heading");
+  });
+
+  it('typing the closing backtick of "`x`" natively applies the code mark and repaints', () => {
+    const { ce, editor, ids } = setup(["`x"]);
+    caretDom(ce, 0, 2);
+    beforeinput(ce, "insertText", "`");
+    const blockEl = nativeInput(ce, 0, "`x`");
+    expect(editor.getBlockText(ids[0])).toBe("x");
+    expect(blockEl.textContent).toBe("x");
+    const run = blockEl.querySelector("[data-off]") as HTMLElement;
+    expect(run.className).toContain("ori-frag-code");
+  });
+});

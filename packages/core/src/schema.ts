@@ -29,12 +29,34 @@ export type BlockArray = Y.Array<Y.Map<unknown>>;
 export type BlockMap = Y.Map<unknown>;
 
 const BLOCKS_KEY = "blocks";
+
+/**
+ * Transaction origin for every edit made through the editor itself. The undo
+ * stack tracks ONLY this origin, so updates applied from persistence or a
+ * collaboration provider (which must use their own origin — see
+ * {@link REMOTE_ORIGIN}) are never undoable locally.
+ */
+export const LOCAL_ORIGIN = "ori:local";
+
+/** Suggested transaction origin for persistence restores / remote sync. */
+export const REMOTE_ORIGIN = "ori:remote";
+
 export const MAX_LIST_LEVEL = 7;
 export const LIST_LEVEL_ATTR = "level";
 export const LIST_MARKER_GUTTER_PX = 28;
 export const LIST_NEST_STEP_PX = 24;
 /** Attr holding a todo-list item's checked state (boolean). */
 export const TODO_CHECKED_ATTR = "checked";
+
+/** Attr holding a heading's level (1–3; 1 when absent). */
+export const HEADING_LEVEL_ATTR = "level";
+export const MAX_HEADING_LEVEL = 3;
+
+export function normalizeHeadingLevel(value: unknown): number {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_HEADING_LEVEL);
+}
 
 export function getBlocks(doc: Y.Doc): BlockArray {
   return doc.getArray<Y.Map<unknown>>(BLOCKS_KEY);
@@ -73,6 +95,11 @@ export function blockListLevel(block: BlockMap): number {
 /** Whether a todo-list item is checked (its `checked` attr is truthy). */
 export function blockTodoChecked(block: BlockMap): boolean {
   return blockAttrs(block)[TODO_CHECKED_ATTR] === true;
+}
+
+/** A heading block's level (1–3), 1 for non-headings or when unset. */
+export function blockHeadingLevel(block: BlockMap): number {
+  return normalizeHeadingLevel(blockAttrs(block)[HEADING_LEVEL_ATTR]);
 }
 
 export function listInsetLeft(level: number): number {

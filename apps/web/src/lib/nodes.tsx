@@ -71,8 +71,44 @@ const imageNode: BlockNode = {
     Math.max(80, Math.min(Math.round(width / ratioOf(attrs)), 460)),
 };
 
+// --- table (an editable grid as a measurable atomic block) -------------------
+
+/** Row height + chrome must match the renderer's CSS exactly (measure = DOM). */
+const TABLE_ROW_H = 36;
+const TABLE_BORDER = 1; // outer border top+bottom = 2 total
+
+const tableRows = (attrs: Record<string, unknown>): string[][] => {
+  const rows = attrs.rows;
+  if (Array.isArray(rows) && rows.length && rows.every((r) => Array.isArray(r))) {
+    return rows as string[][];
+  }
+  return [
+    ["", ""],
+    ["", ""],
+  ];
+};
+
+const tableNode: BlockNode = {
+  type: "table",
+  text: false,
+  spacing: 14,
+  // Height is a pure function of the row count — re-measured whenever the
+  // attrs change (adding/removing rows), like the image on resize.
+  measure: ({ attrs }: BlockMeasureContext) => tableRows(attrs).length * TABLE_ROW_H + TABLE_BORDER * 2,
+};
+
+export function defaultTableAttrs(): Record<string, unknown> {
+  return {
+    rows: [
+      ["Name", "Value"],
+      ["", ""],
+      ["", ""],
+    ],
+  };
+}
+
 export const editorNodes: Partial<EditorSchema> = {
-  blocks: { divider: dividerNode, image: imageNode },
+  blocks: { divider: dividerNode, image: imageNode, table: tableNode },
   atoms: { mention: mentionAtom },
 };
 
@@ -82,12 +118,104 @@ export function sampleImageAttrs(): Record<string, unknown> {
 
 // --- renderers --------------------------------------------------------------
 
+/**
+ * An editable table. Cells are uncontrolled inputs committing to the block's
+ * attrs on blur — a per-keystroke write would re-render (remount) the block
+ * and drop input focus, while blur-commit keeps typing native and still makes
+ * every change sync/undo/measure like any other edit. Row/column controls
+ * appear on hover. Copy/paste of the whole block round-trips via block attrs.
+ */
+function TableBlock({ editor, block }: { editor: import("@wingleeio/ori-core").EditorController; block: { id: string } }) {
+  const rows = (() => {
+    const attrs = editor.getBlockAttrs(block.id).rows;
+    return Array.isArray(attrs) ? (attrs as string[][]) : [["", ""], ["", ""]];
+  })();
+  const cols = rows[0]?.length ?? 2;
+  const write = (next: string[][]) => editor.setBlockAttrs(block.id, { rows: next });
+  const setCell = (r: number, c: number, v: string) => {
+    if (rows[r]?.[c] === v) return;
+    const next = rows.map((row) => [...row]);
+    next[r][c] = v;
+    write(next);
+  };
+  return (
+    <div className="group/table relative" data-ori-widget>
+      <table
+        className="w-full border-collapse overflow-hidden rounded-md border border-border text-sm"
+        style={{ tableLayout: "fixed" }}
+      >
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r} className={r === 0 ? "bg-muted/50 font-medium" : ""}>
+              {row.map((cell, c) => (
+                <td key={c} className="border border-border p-0" style={{ height: 36 }}>
+                  <input
+                    defaultValue={cell}
+                    aria-label={`Table cell row ${r + 1} column ${c + 1}`}
+                    onBlur={(e) => setCell(r, c, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    className="h-full w-full bg-transparent px-2 outline-none focus:bg-primary/5"
+                    style={{ height: 34 }}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="absolute -right-7 top-0 hidden h-full flex-col justify-center gap-1 group-hover/table:flex">
+        <button
+          type="button"
+          title="Add column"
+          className="rounded border border-border bg-background px-1 text-xs opacity-70 hover:opacity-100"
+          onClick={() => write(rows.map((row) => [...row, ""]))}
+        >
+          +
+        </button>
+        {cols > 1 && (
+          <button
+            type="button"
+            title="Remove last column"
+            className="rounded border border-border bg-background px-1 text-xs opacity-70 hover:opacity-100"
+            onClick={() => write(rows.map((row) => row.slice(0, -1)))}
+          >
+            −
+          </button>
+        )}
+      </div>
+      <div className="absolute -bottom-6 left-0 hidden gap-1 group-hover/table:flex">
+        <button
+          type="button"
+          title="Add row"
+          className="rounded border border-border bg-background px-1 text-xs opacity-70 hover:opacity-100"
+          onClick={() => write([...rows, rows[0].map(() => "")])}
+        >
+          +
+        </button>
+        {rows.length > 1 && (
+          <button
+            type="button"
+            title="Remove last row"
+            className="rounded border border-border bg-background px-1 text-xs opacity-70 hover:opacity-100"
+            onClick={() => write(rows.slice(0, -1))}
+          >
+            −
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const blockRenderers: Record<string, BlockRenderer> = {
   divider: () => (
     <div className="flex h-full items-center" aria-hidden>
       <div className="h-px w-full bg-border" />
     </div>
   ),
+  table: ({ editor, block }) => <TableBlock editor={editor} block={block} />,
   image: ({ editor, block }) => {
     const src = String(editor.getBlockAttrs(block.id).src ?? "");
     return (

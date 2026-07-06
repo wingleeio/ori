@@ -124,12 +124,21 @@ function markClass(marks: InlineItem["marks"]): string {
   return cls.join(" ");
 }
 
-/** Build the inline run DOM for a block (text spans only; atoms handled by the view). */
-export function buildRun(item: InlineItem): HTMLElement {
+/** Build the inline run DOM for a block (text spans only; atoms handled by the view).
+ *  `extraClass` adds color-only classes (syntax tokens) that never affect metrics. */
+export function buildRun(item: InlineItem, extraClass?: string): HTMLElement {
   const span = document.createElement("span");
-  span.className = markClass(item.marks);
+  span.className = extraClass ? `${markClass(item.marks)} ${extraClass}` : markClass(item.marks);
   span.dataset.off = String(item.start);
   span.dataset.len = String(item.text.length);
+  const link = item.marks?.link;
+  if (link) {
+    // Carry the target on the run so the view can open it (Cmd/Ctrl+click) and
+    // AT/tooltips can announce it. Rendered as a span, not <a>, so the line's
+    // glyph metrics stay exactly what Pretext measured.
+    span.dataset.href = link;
+    span.title = link;
+  }
   span.textContent = item.text;
   return span;
 }
