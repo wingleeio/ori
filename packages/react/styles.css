@@ -65,7 +65,15 @@
 }
 .ori-ce .ori-block {
   white-space: pre-wrap;
-  min-height: 1.6em;
+  /* Keep an empty block selectable at exactly ONE line. This must never
+     exceed the block's own line-height: the old 1.6em floor overflowed a
+     heading's 1.3 line-height (font-size 1.6em × 1.6em floor = 2.56em > 2.08em
+     line), rendering headings ~8px taller than Pretext measured — which
+     drifted every model-positioned overlay (placeholder, highlights) and the
+     virtualized scroll height below them. `1lh` is the block's own line box;
+     the 1em first line is a safe floor for engines without `lh` support. */
+  min-height: 1em;
+  min-height: 1lh;
 }
 .ori-ce .ori-frag {
   white-space: inherit; /* wrap with the block, not `pre` */

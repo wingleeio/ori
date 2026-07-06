@@ -27,6 +27,20 @@ Put the script **inside the repo** (e.g. `.verify-*.mjs`) so `import "playwright
 resolves; delete it afterwards. Run with `node <script>` (sandbox off — it binds
 a socket to the dev server).
 
+## Docs site (second surface)
+
+`pnpm --filter docs dev` serves Next.js on :3000 with a live editor on the
+landing page (scope selectors with `.live-editor`; it uses the Hanken Grotesk
+webfont — wait ~800ms for fonts). The editor sits below the fold: call
+`ce.scrollIntoViewIfNeeded()` before mouse work or clicks land on the hero.
+
+**Layout-drift check** (the architecture's #1 risk): model-positioned overlays
+(`.ori-placeholder`, find highlights) must align with DOM-positioned ones
+(`.ori-caret`). Compare their `getBoundingClientRect().top` — >2px apart means
+some block's DOM height ≠ Pretext's measured height; diff per-block heights
+against expected `lines × line-height (+insets)` to find the culprit (CSS
+floors/padding on `.ori-block*` are prime suspects).
+
 ## Gotchas
 
 - The editing surface is `.ori-ce` (contenteditable). Click it first.
