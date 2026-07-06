@@ -8,9 +8,16 @@ import {
   fullAttributes,
   getBlocks,
   resolveFont,
+  type EditorController,
   type EditorSchema,
 } from "@wingleeio/ori-core";
-import { NoteEditor, useEditor, type AtomRenderer, type NoteEditorHandle } from "@wingleeio/ori-react";
+import {
+  NoteEditor,
+  useEditor,
+  type AtomRenderer,
+  type BlockRenderer,
+  type NoteEditorHandle,
+} from "@wingleeio/ori-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { MentionMenu, SelectionMenu, SlashMenu } from "./editor-menus";
@@ -69,6 +76,16 @@ function seedDoc(): Y.Doc {
     add("todo-list", [{ text: "Click the checkbox to toggle a to-do item." }], { checked: true });
     add("todo-list", [{ text: "Checked state lives in the block's attrs, like any mark." }]);
 
+    add("heading", [{ text: "Custom, measurable nodes" }], { level: 2 });
+    add("paragraph", [
+      { text: "Tables, images and dividers are " },
+      { text: "custom nodes", marks: { bold: true } },
+      { text: " — a measure() function plus a renderer. Hover the table for row/column controls; cells are editable." },
+    ]);
+    add("table", [], defaultTableAttrs());
+    add("image", [], sampleImageAttrs());
+    add("divider", []);
+
     add("heading", [{ text: "How it fits together" }]);
     add("paragraph", [
       { text: "Every block is a row in a " },
@@ -99,7 +116,76 @@ function seedDoc(): Y.Doc {
 
 const CHIP_FONT = 14;
 
+/* Table geometry — the measure() MUST equal the rendered CSS exactly. */
+const TABLE_ROW_H = 36;
+const TABLE_BORDER = 1;
+const tableRows = (attrs: Record<string, unknown>): string[][] => {
+  const rows = attrs.rows;
+  if (Array.isArray(rows) && rows.length && rows.every((r) => Array.isArray(r))) {
+    return rows as string[][];
+  }
+  return [
+    ["", ""],
+    ["", ""],
+  ];
+};
+
+export function defaultTableAttrs(): Record<string, unknown> {
+  return {
+    rows: [
+      ["Editor", "DOM nodes"],
+      ["ori", "77"],
+      ["everyone else", "every block"],
+    ],
+  };
+}
+
+/* A self-contained monochrome "photo" so the demo needs no network. */
+const SAMPLE_IMAGE =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='700'>
+      <defs>
+        <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+          <stop offset='0' stop-color='#0a0a0a'/>
+          <stop offset='0.55' stop-color='#1c2733'/>
+          <stop offset='1' stop-color='#3291ff'/>
+        </linearGradient>
+        <radialGradient id='h' cx='0.8' cy='0.15' r='0.9'>
+          <stop offset='0' stop-color='rgba(255,255,255,0.25)'/>
+          <stop offset='1' stop-color='rgba(255,255,255,0)'/>
+        </radialGradient>
+      </defs>
+      <rect width='1600' height='700' fill='url(#g)'/>
+      <rect width='1600' height='700' fill='url(#h)'/>
+    </svg>`,
+  );
+export const SAMPLE_IMAGE_RATIO = 1600 / 700;
+
+export function sampleImageAttrs(): Record<string, unknown> {
+  return { src: SAMPLE_IMAGE, ratio: SAMPLE_IMAGE_RATIO };
+}
+
 const schema: Partial<EditorSchema> = {
+  blocks: {
+    divider: { type: "divider", text: false, spacing: 10, measure: () => 33 },
+    image: {
+      type: "image",
+      text: false,
+      spacing: 14,
+      measure: ({ width, attrs }) => {
+        const r = Number(attrs.ratio);
+        const ratio = Number.isFinite(r) && r > 0 ? r : SAMPLE_IMAGE_RATIO;
+        return Math.max(80, Math.min(Math.round(width / ratio), 360));
+      },
+    },
+    table: {
+      type: "table",
+      text: false,
+      spacing: 14,
+      measure: ({ attrs }) => tableRows(attrs).length * TABLE_ROW_H + TABLE_BORDER * 2,
+    },
+  },
   atoms: {
     mention: {
       type: "mention",
@@ -110,6 +196,110 @@ const schema: Partial<EditorSchema> = {
       },
     },
   },
+};
+
+/* Editable table cells commit on blur (a per-keystroke write would remount
+   the focused input); `data-ori-widget` keeps events native to the inputs. */
+function TableBlock({ editor, block }: { editor: EditorController; block: { id: string } }) {
+  const rows = tableRows(editor.getBlockAttrs(block.id));
+  const write = (next: string[][]) => editor.setBlockAttrs(block.id, { rows: next });
+  return (
+    <div className="group/table relative" data-ori-widget>
+      <table
+        className="w-full border-collapse overflow-hidden rounded-lg text-sm"
+        style={{ tableLayout: "fixed", border: "1px solid var(--hairline)" }}
+      >
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r} style={r === 0 ? { background: "rgba(255,255,255,0.045)" } : undefined}>
+              {row.map((cell, c) => (
+                <td key={c} className="p-0" style={{ height: 36, border: "1px solid var(--hairline)" }}>
+                  <input
+                    defaultValue={cell}
+                    aria-label={`Table cell row ${r + 1} column ${c + 1}`}
+                    onBlur={(e) => {
+                      if (rows[r]?.[c] === e.target.value) return;
+                      const next = rows.map((x) => [...x]);
+                      next[r][c] = e.target.value;
+                      write(next);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    className={`h-[34px] w-full bg-transparent px-2.5 outline-none focus:bg-white/[0.04] ${r === 0 ? "font-medium text-fd-foreground" : "text-fd-foreground/90"}`}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="absolute -right-7 top-0 hidden h-full flex-col justify-center gap-1 group-hover/table:flex">
+        <button
+          type="button"
+          title="Add column"
+          className="kbd cursor-pointer hover:text-white"
+          onClick={() => write(rows.map((row) => [...row, ""]))}
+        >
+          +
+        </button>
+        {rows[0].length > 1 && (
+          <button
+            type="button"
+            title="Remove last column"
+            className="kbd cursor-pointer hover:text-white"
+            onClick={() => write(rows.map((row) => row.slice(0, -1)))}
+          >
+            −
+          </button>
+        )}
+      </div>
+      <div className="absolute -bottom-6 left-0 hidden gap-1 group-hover/table:flex">
+        <button
+          type="button"
+          title="Add row"
+          className="kbd cursor-pointer hover:text-white"
+          onClick={() => write([...rows, rows[0].map(() => "")])}
+        >
+          +
+        </button>
+        {rows.length > 1 && (
+          <button
+            type="button"
+            title="Remove last row"
+            className="kbd cursor-pointer hover:text-white"
+            onClick={() => write(rows.slice(0, -1))}
+          >
+            −
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const blockRenderers: Record<string, BlockRenderer> = {
+  divider: () => (
+    <div className="flex h-full items-center" aria-hidden>
+      <div className="h-px w-full" style={{ background: "var(--hairline)" }} />
+    </div>
+  ),
+  image: ({ editor, block }) => (
+    <img
+      src={String(editor.getBlockAttrs(block.id).src ?? "")}
+      alt=""
+      draggable={false}
+      style={{
+        display: "block",
+        width: "100%",
+        height: block.height,
+        objectFit: "cover",
+        borderRadius: 10,
+        border: "1px solid var(--hairline)",
+      }}
+    />
+  ),
+  table: ({ editor, block }) => <TableBlock editor={editor} block={block} />,
 };
 
 const atomRenderers: Record<string, AtomRenderer> = {
@@ -150,6 +340,7 @@ function EditorInner() {
         maxWidth={620}
         placeholder="Write something…"
         atomRenderers={atomRenderers}
+        blockRenderers={blockRenderers}
         className="h-full"
       />
       <SelectionMenu editor={editor} editorRef={editorRef} />

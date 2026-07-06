@@ -115,36 +115,47 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
         if (e.pointerType === "mouse") e.preventDefault();
       }}
     >
-      <div className="animate-fade-in overflow-hidden rounded-xl bg-popover p-1 shadow-xl ring-1 ring-border/60">
-        <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-          People
+      <div className="menu-panel menu-in overflow-hidden">
+        <div className="flex items-center justify-between px-2.5 pb-1 pt-2">
+          <span className="menu-label">People</span>
+          <span className="flex items-center gap-1">
+            <span className="kbd-chip">↑</span>
+            <span className="kbd-chip">↓</span>
+            <span className="kbd-chip">↵</span>
+          </span>
         </div>
-        <div className="max-h-[280px] overflow-y-auto">
+        <div className="max-h-[300px] overflow-y-auto p-1 pt-0.5">
           {people.map((p, i) => (
             <button
               key={p.name}
               type="button"
+              data-selected={i === index}
               onPointerEnter={() => setIndex(i)}
               // Apply on click (a clean tap, not a scroll-drag). apply() sets the
               // selection itself and re-focuses, so it works even if the tap blurred
               // the editor on touch — no pointer-down preventDefault needed here.
               onClick={() => apply(p)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left",
-                i === index ? "bg-accent" : "hover:bg-accent/60",
+                "flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left text-[13px] transition-colors duration-75",
+                i === index ? "bg-foreground/[0.07] text-foreground" : "text-foreground/80",
               )}
             >
               <span
                 className={cn(
-                  "grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
+                  "grid size-[26px] shrink-0 place-items-center rounded-full text-[10px] font-semibold ring-1 ring-border/60",
                   avatarColor(p.name),
                 )}
               >
                 {initials(p.name)}
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium leading-tight">{p.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">{p.role}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+              <span
+                className={cn(
+                  "truncate text-[11px]",
+                  i === index ? "text-muted-foreground" : "text-muted-foreground/60",
+                )}
+              >
+                {p.role}
               </span>
             </button>
           ))}

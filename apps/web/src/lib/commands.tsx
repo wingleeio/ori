@@ -73,28 +73,29 @@ export interface SlashCommand {
   id: string;
   label: string;
   hint?: string;
+  group: string;
   icon: Icon;
   keywords: string[];
   run: (editor: EditorController) => void;
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { id: "text", label: "Text", hint: "Plain paragraph", icon: Pilcrow, keywords: ["text", "paragraph", "body", "p"], run: (e) => e.setBlockTypeAtSelection("paragraph") },
-  { id: "heading", label: "Heading 1", hint: "Section title", icon: Heading1, keywords: ["heading", "title", "h1", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 1 }) },
-  { id: "heading-2", label: "Heading 2", hint: "Sub-section title", icon: Heading2, keywords: ["heading", "subtitle", "h2", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 2 }) },
-  { id: "heading-3", label: "Heading 3", hint: "Small heading", icon: Heading3, keywords: ["heading", "h3", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 3 }) },
-  { id: "quote", label: "Quote", hint: "Callout or citation", icon: Quote, keywords: ["quote", "blockquote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
-  { id: "bullet-list", label: "Bullet list", hint: "Bulleted item", icon: List, keywords: ["bullet", "list", "ul", "unordered"], run: (e) => e.setBlockTypeAtSelection("bullet-list") },
-  { id: "ordered-list", label: "Numbered list", hint: "Numbered item", icon: ListOrdered, keywords: ["number", "ordered", "list", "ol"], run: (e) => e.setBlockTypeAtSelection("ordered-list") },
-  { id: "todo-list", label: "To-do list", hint: "Checklist item", icon: ListTodo, keywords: ["todo", "task", "check", "checkbox", "list"], run: (e) => e.setBlockTypeAtSelection("todo-list") },
-  { id: "code", label: "Code block", hint: "Monospace block", icon: Code2, keywords: ["code", "snippet", "pre", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
-  { id: "bold", label: "Bold", hint: "Toggle bold", icon: Bold, keywords: ["bold", "strong", "b"], run: (e) => e.toggleMark("bold") },
-  { id: "italic", label: "Italic", hint: "Toggle italic", icon: Italic, keywords: ["italic", "emphasis", "i"], run: (e) => e.toggleMark("italic") },
-  { id: "inline-code", label: "Inline code", hint: "Toggle code mark", icon: Code, keywords: ["code", "inline", "mono"], run: (e) => e.toggleMark("code") },
+  { id: "text", label: "Text", hint: "Plain paragraph", group: "Basic", icon: Pilcrow, keywords: ["text", "paragraph", "body", "p"], run: (e) => e.setBlockTypeAtSelection("paragraph") },
+  { id: "heading", label: "Heading 1", hint: "Section title", group: "Basic", icon: Heading1, keywords: ["heading", "title", "h1", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 1 }) },
+  { id: "heading-2", label: "Heading 2", hint: "Sub-section", group: "Basic", icon: Heading2, keywords: ["heading", "subtitle", "h2", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 2 }) },
+  { id: "heading-3", label: "Heading 3", hint: "Small heading", group: "Basic", icon: Heading3, keywords: ["heading", "h3", "header"], run: (e) => e.setBlockTypeAtSelection("heading", { level: 3 }) },
+  { id: "quote", label: "Quote", hint: "Callout or citation", group: "Basic", icon: Quote, keywords: ["quote", "blockquote", "cite"], run: (e) => e.setBlockTypeAtSelection("quote") },
+  { id: "bullet-list", label: "Bullet list", hint: "Simple list", group: "Lists", icon: List, keywords: ["bullet", "list", "ul", "unordered"], run: (e) => e.setBlockTypeAtSelection("bullet-list") },
+  { id: "ordered-list", label: "Numbered list", hint: "Ordered list", group: "Lists", icon: ListOrdered, keywords: ["number", "ordered", "list", "ol"], run: (e) => e.setBlockTypeAtSelection("ordered-list") },
+  { id: "todo-list", label: "To-do list", hint: "Checklist", group: "Lists", icon: ListTodo, keywords: ["todo", "task", "check", "checkbox", "list"], run: (e) => e.setBlockTypeAtSelection("todo-list") },
+  { id: "code", label: "Code block", hint: "Highlighted code", group: "Blocks", icon: Code2, keywords: ["code", "snippet", "pre", "mono"], run: (e) => e.setBlockTypeAtSelection("code") },
   // Custom, measurable nodes registered via the schema (mentions use "@"):
-  { id: "divider", label: "Divider", hint: "Horizontal rule (custom node)", icon: Minus, keywords: ["divider", "rule", "hr", "line", "separator"], run: (e) => e.insertBlockAfterSelection("divider") },
-  { id: "image", label: "Image", hint: "Sample image (custom node)", icon: Image, keywords: ["image", "img", "photo", "picture"], run: (e) => e.insertBlockAfterSelection("image", sampleImageAttrs()) },
-  { id: "table", label: "Table", hint: "Editable grid (custom node)", icon: Table, keywords: ["table", "grid", "rows", "columns"], run: (e) => e.insertBlockAfterSelection("table", defaultTableAttrs()) },
+  { id: "table", label: "Table", hint: "Editable grid", group: "Blocks", icon: Table, keywords: ["table", "grid", "rows", "columns"], run: (e) => e.insertBlockAfterSelection("table", defaultTableAttrs()) },
+  { id: "image", label: "Image", hint: "Custom image node", group: "Blocks", icon: Image, keywords: ["image", "img", "photo", "picture"], run: (e) => e.insertBlockAfterSelection("image", sampleImageAttrs()) },
+  { id: "divider", label: "Divider", hint: "Horizontal rule", group: "Blocks", icon: Minus, keywords: ["divider", "rule", "hr", "line", "separator"], run: (e) => e.insertBlockAfterSelection("divider") },
+  { id: "bold", label: "Bold", hint: "Toggle bold", group: "Format", icon: Bold, keywords: ["bold", "strong", "b"], run: (e) => e.toggleMark("bold") },
+  { id: "italic", label: "Italic", hint: "Toggle italic", group: "Format", icon: Italic, keywords: ["italic", "emphasis", "i"], run: (e) => e.toggleMark("italic") },
+  { id: "inline-code", label: "Inline code", hint: "Toggle code mark", group: "Format", icon: Code, keywords: ["code", "inline", "mono"], run: (e) => e.toggleMark("code") },
 ];
 
 export function filterSlashCommands(query: string): SlashCommand[] {

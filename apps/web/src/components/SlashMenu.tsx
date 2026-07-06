@@ -1,5 +1,6 @@
 import { isCollapsed, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
+import { CornerDownLeft } from "lucide-react";
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCaretMenu } from "@/lib/caretMenu";
@@ -118,36 +119,55 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
     >
       {/* Animation on an inner element so it never overrides the parent's
           positioning transform (which caused the menu to jump on open). */}
-      <div className="animate-fade-in overflow-hidden rounded-xl bg-popover p-1 shadow-xl ring-1 ring-border/60">
-        <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-          Blocks & formatting
+      <div className="menu-panel menu-in overflow-hidden">
+        <div className="flex items-center justify-between px-2.5 pb-1 pt-2">
+          <span className="menu-label">{ctx?.query ? `“${ctx.query}”` : "Insert"}</span>
+          <span className="flex items-center gap-1">
+            <span className="kbd-chip">↑</span>
+            <span className="kbd-chip">↓</span>
+            <span className="kbd-chip">↵</span>
+          </span>
         </div>
-        <div className="max-h-[280px] overflow-y-auto">
-          {commands.map((c, i) => (
-            <button
-              key={c.id}
-              type="button"
-              onPointerEnter={() => setIndex(i)}
-              // Apply on click (a clean tap, not a scroll-drag). apply() sets the
-              // selection itself and re-focuses, so it works even if the tap blurred
-              // the editor on touch — no pointer-down preventDefault needed here.
-              onClick={() => apply(c)}
-              className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left",
-                i === index ? "bg-accent" : "hover:bg-accent/60",
-              )}
-            >
-              <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                <c.icon className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium leading-tight">{c.label}</span>
-                {c.hint ? (
-                  <span className="block truncate text-xs text-muted-foreground">{c.hint}</span>
-                ) : null}
-              </span>
-            </button>
-          ))}
+        <div className="max-h-[300px] overflow-y-auto p-1 pt-0.5">
+          {commands.map((c, i) => {
+            const groupStart = i === 0 || commands[i - 1].group !== c.group;
+            return (
+              <div key={c.id}>
+                {groupStart && i !== 0 && <div className="mx-2 my-1 h-px bg-border/70" />}
+                {groupStart && <div className="menu-label px-2 pb-1 pt-1.5">{c.group}</div>}
+                <button
+                  type="button"
+                  data-index={i}
+                  data-selected={i === index}
+                  onPointerEnter={() => setIndex(i)}
+                  // Apply on click (a clean tap, not a scroll-drag). apply() sets the
+                  // selection itself and re-focuses, so it works even if the tap blurred
+                  // the editor on touch — no pointer-down preventDefault needed here.
+                  onClick={() => apply(c)}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left text-[13px] transition-colors duration-75",
+                    i === index ? "bg-foreground/[0.07] text-foreground" : "text-foreground/80",
+                  )}
+                >
+                  <span className="menu-tile shrink-0">
+                    <c.icon className="size-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
+                  {c.hint ? (
+                    <span
+                      className={cn(
+                        "truncate text-[11px]",
+                        i === index ? "text-muted-foreground" : "text-muted-foreground/60",
+                      )}
+                    >
+                      {c.hint}
+                    </span>
+                  ) : null}
+                  {i === index && <CornerDownLeft className="size-3 shrink-0 text-muted-foreground/70" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>,

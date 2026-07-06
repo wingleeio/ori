@@ -59,7 +59,7 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
     <div ref={ref} data-ori-overlay className="fixed z-40" style={{ top: 0, left: 0, visibility: "hidden" }}>
       {/* Animation lives on an inner element so it can't clobber the
           positioning transform on the fixed parent (which caused jumpiness). */}
-      <div className="animate-fade-in rounded-xl bg-popover p-1 shadow-lg ring-1 ring-border/60">
+      <div className="menu-panel menu-in p-1">
       <div className="flex items-center gap-0.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -86,16 +86,19 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <span className="mx-0.5 h-5 w-px bg-border/70" />
+        <span className="mx-0.5 h-4 w-px bg-border/80" />
 
         {MARK_OPTIONS.map((m) => {
           const active = !!marks[m.key];
           return (
             <Button
               key={m.key}
-              variant={active ? "secondary" : "ghost"}
+              variant="ghost"
               size="icon-sm"
-              className={cn("size-7", active && "text-foreground")}
+              className={cn(
+                "size-7 rounded-lg text-muted-foreground hover:text-foreground",
+                active && "bg-foreground/[0.12] text-foreground hover:bg-foreground/[0.15]",
+              )}
               aria-pressed={active}
               title={m.shortcut ? `${m.label} · ${m.shortcut}` : m.label}
               onPointerDown={keepFocus}
@@ -111,12 +114,15 @@ export function SelectionMenu({ editor, editorRef }: SelectionMenuProps) {
           );
         })}
 
-        <span className="mx-0.5 h-5 w-px bg-border/70" />
+        <span className="mx-0.5 h-4 w-px bg-border/80" />
 
         <Button
-          variant={activeLink ? "secondary" : "ghost"}
+          variant="ghost"
           size="icon-sm"
-          className={cn("size-7", activeLink && "text-foreground")}
+          className={cn(
+            "size-7 rounded-lg text-muted-foreground hover:text-foreground",
+            activeLink && "bg-foreground/[0.12] text-foreground hover:bg-foreground/[0.15]",
+          )}
           aria-pressed={!!activeLink}
           title="Link · ⌘K"
           onPointerDown={keepFocus}
