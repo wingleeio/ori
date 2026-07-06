@@ -18,6 +18,7 @@ import {
   type BlockRenderer,
   type NoteEditorHandle,
 } from "@wingleeio/ori-react";
+import { Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { MentionMenu, SelectionMenu, SlashMenu } from "./editor-menus";
@@ -198,80 +199,106 @@ const schema: Partial<EditorSchema> = {
   },
 };
 
+/* Small solid control used by the table's hover rails. */
+function TableRailButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="grid size-[20px] cursor-pointer place-items-center rounded-md text-fd-muted-foreground transition-colors hover:text-white"
+      style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.14)" }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /* Editable table cells commit on blur (a per-keystroke write would remount
-   the focused input); `data-ori-widget` keeps events native to the inputs. */
+   the focused input); `data-ori-widget` keeps events native to the inputs.
+   Geometry contract: wrapper border (2px) + rows × 36px == the node's
+   measure(), so single-sided cell borders draw the grid without any
+   border-collapse rounding. */
 function TableBlock({ editor, block }: { editor: EditorController; block: { id: string } }) {
   const rows = tableRows(editor.getBlockAttrs(block.id));
   const write = (next: string[][]) => editor.setBlockAttrs(block.id, { rows: next });
+  const line = "rgba(255,255,255,0.09)";
   return (
     <div className="group/table relative" data-ori-widget>
-      <table
-        className="w-full border-collapse overflow-hidden rounded-lg text-sm"
-        style={{ tableLayout: "fixed", border: "1px solid var(--hairline)" }}
+      <div
+        className="overflow-hidden rounded-lg"
+        style={{ border: "1px solid rgba(255,255,255,0.14)", background: "#0c0c0c" }}
       >
-        <tbody>
-          {rows.map((row, r) => (
-            <tr key={r} style={r === 0 ? { background: "rgba(255,255,255,0.045)" } : undefined}>
-              {row.map((cell, c) => (
-                <td key={c} className="p-0" style={{ height: 36, border: "1px solid var(--hairline)" }}>
-                  <input
-                    defaultValue={cell}
-                    aria-label={`Table cell row ${r + 1} column ${c + 1}`}
-                    onBlur={(e) => {
-                      if (rows[r]?.[c] === e.target.value) return;
-                      const next = rows.map((x) => [...x]);
-                      next[r][c] = e.target.value;
-                      write(next);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    }}
-                    className={`h-[34px] w-full bg-transparent px-2.5 outline-none focus:bg-white/[0.04] ${r === 0 ? "font-medium text-fd-foreground" : "text-fd-foreground/90"}`}
-                  />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="absolute -right-7 top-0 hidden h-full flex-col justify-center gap-1 group-hover/table:flex">
-        <button
-          type="button"
-          title="Add column"
-          className="kbd cursor-pointer hover:text-white"
-          onClick={() => write(rows.map((row) => [...row, ""]))}
+        <table
+          className="w-full text-sm"
+          style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}
         >
-          +
-        </button>
+          <tbody>
+            {rows.map((row, r) => (
+              <tr key={r} style={r === 0 ? { background: "#161616" } : undefined}>
+                {row.map((cell, c) => (
+                  <td
+                    key={c}
+                    className="p-0 align-middle"
+                    style={{
+                      height: 36,
+                      boxSizing: "border-box",
+                      borderTop: r === 0 ? "none" : `1px solid ${r === 1 ? "rgba(255,255,255,0.14)" : line}`,
+                      borderLeft: c === 0 ? "none" : `1px solid ${line}`,
+                    }}
+                  >
+                    <input
+                      defaultValue={cell}
+                      aria-label={`Table cell row ${r + 1} column ${c + 1}`}
+                      onBlur={(e) => {
+                        if (rows[r]?.[c] === e.target.value) return;
+                        const next = rows.map((x) => [...x]);
+                        next[r][c] = e.target.value;
+                        write(next);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                      className={`h-full w-full bg-transparent px-3 outline-none transition-colors focus:bg-white/[0.05] ${
+                        r === 0
+                          ? "text-[12px] font-medium uppercase tracking-wide text-fd-muted-foreground"
+                          : "text-fd-foreground/90"
+                      }`}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* hover rails: columns on the right, rows underneath */}
+      <div className="absolute -right-[26px] top-0 flex h-full flex-col items-center justify-center gap-1 opacity-0 transition-opacity duration-150 group-hover/table:opacity-100">
+        <TableRailButton title="Add column" onClick={() => write(rows.map((row) => [...row, ""]))}>
+          <Plus className="size-3" />
+        </TableRailButton>
         {rows[0].length > 1 && (
-          <button
-            type="button"
-            title="Remove last column"
-            className="kbd cursor-pointer hover:text-white"
-            onClick={() => write(rows.map((row) => row.slice(0, -1)))}
-          >
-            −
-          </button>
+          <TableRailButton title="Remove last column" onClick={() => write(rows.map((row) => row.slice(0, -1)))}>
+            <Minus className="size-3" />
+          </TableRailButton>
         )}
       </div>
-      <div className="absolute -bottom-6 left-0 hidden gap-1 group-hover/table:flex">
-        <button
-          type="button"
-          title="Add row"
-          className="kbd cursor-pointer hover:text-white"
-          onClick={() => write([...rows, rows[0].map(() => "")])}
-        >
-          +
-        </button>
+      <div className="absolute -bottom-[26px] left-0 flex w-full items-center justify-center gap-1 opacity-0 transition-opacity duration-150 group-hover/table:opacity-100">
+        <TableRailButton title="Add row" onClick={() => write([...rows, rows[0].map(() => "")])}>
+          <Plus className="size-3" />
+        </TableRailButton>
         {rows.length > 1 && (
-          <button
-            type="button"
-            title="Remove last row"
-            className="kbd cursor-pointer hover:text-white"
-            onClick={() => write(rows.slice(0, -1))}
-          >
-            −
-          </button>
+          <TableRailButton title="Remove last row" onClick={() => write(rows.slice(0, -1))}>
+            <Minus className="size-3" />
+          </TableRailButton>
         )}
       </div>
     </div>

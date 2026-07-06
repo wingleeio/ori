@@ -124,7 +124,7 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
             <span className="kbd-chip">↵</span>
           </span>
         </div>
-        <div className="max-h-[300px] overflow-y-auto p-1 pt-0.5">
+        <div className="menu-list p-1.5 pt-0.5">
           {people.map((p, i) => (
             <button
               key={p.name}

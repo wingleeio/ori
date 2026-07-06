@@ -27,7 +27,16 @@ export function useCaretMenu(
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
         const vpTop = sc ? sc.top : 0;
         const vpBottom = sc ? sc.bottom : window.innerHeight;
-        const above = c.y + c.height + maxHeight > vpBottom && c.y - vpTop > maxHeight;
+        // The menu must fit within BOTH the editor viewport and the window:
+        // measure the real room on each side, open toward the larger side when
+        // it doesn't fit below, and cap the list height to the room so the
+        // panel never runs off an edge (the list scrolls instead).
+        const bottomLimit = Math.min(vpBottom, window.innerHeight) - 8;
+        const topLimit = Math.max(vpTop, 0) + 8;
+        const roomBelow = bottomLimit - (c.y + c.height + 6);
+        const roomAbove = c.y - 6 - topLimit;
+        const above = roomBelow < maxHeight && roomAbove > roomBelow;
+        el.style.setProperty("--menu-room", `${Math.max(170, above ? roomAbove : roomBelow)}px`);
         el.style.top = `${above ? c.y - 6 : c.y + c.height + 6}px`;
         el.style.left = `${Math.max(8, Math.min(c.x, window.innerWidth - width - 8))}px`;
         el.style.transform = above ? "translateY(-100%)" : "";

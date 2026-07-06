@@ -118,7 +118,16 @@ function useCaretMenu(editorRef: Ref, open: boolean, width: number, maxHeight = 
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
         const vpTop = sc ? sc.top : 0;
         const vpBottom = sc ? sc.bottom : window.innerHeight;
-        const above = c.y + c.height + maxHeight > vpBottom && c.y - vpTop > maxHeight;
+        // The menu must fit within BOTH the editor viewport and the window:
+        // measure the real room on each side, open toward the larger side when
+        // it doesn't fit below, and cap the list height to the room so the
+        // panel never runs off an edge (the list scrolls instead).
+        const bottomLimit = Math.min(vpBottom, window.innerHeight) - 8;
+        const topLimit = Math.max(vpTop, 0) + 8;
+        const roomBelow = bottomLimit - (c.y + c.height + 6);
+        const roomAbove = c.y - 6 - topLimit;
+        const above = roomBelow < maxHeight && roomAbove > roomBelow;
+        el.style.setProperty("--menu-room", `${Math.max(170, above ? roomAbove : roomBelow)}px`);
         el.style.top = `${above ? c.y - 6 : c.y + c.height + 6}px`;
         el.style.left = `${Math.max(8, Math.min(c.x, window.innerWidth - width - 8))}px`;
         el.style.transform = above ? "translateY(-100%)" : "";
@@ -228,7 +237,7 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
     <div ref={menuRef} data-ori-overlay className="fixed z-40 w-[276px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>
       <div className="menu-panel menu-in overflow-hidden">
         <MenuHeader label={ctx?.query ? `“${ctx.query}”` : "Insert"} />
-        <div ref={listRef} className="max-h-[300px] overflow-y-auto p-1 pt-0.5">
+        <div ref={listRef} className="menu-list p-1.5 pt-0.5">
           {commands.map((c, i) => {
             const groupStart = i === 0 || commands[i - 1].group !== c.group;
             return (
@@ -318,7 +327,7 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
     <div ref={menuRef} data-ori-overlay className="fixed z-40 w-[264px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>
       <div className="menu-panel menu-in overflow-hidden">
         <MenuHeader label="People" />
-        <div className="p-1 pt-0.5">
+        <div className="menu-list p-1.5 pt-0.5">
           {people.map((p, i) => (
             <button
               key={p}

@@ -1,7 +1,7 @@
 import { isCollapsed, type EditorController } from "@wingleeio/ori-core";
 import { useEditorSnapshot, type NoteEditorHandle } from "@wingleeio/ori-react";
 import { CornerDownLeft } from "lucide-react";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCaretMenu } from "@/lib/caretMenu";
 import { filterSlashCommands, type SlashCommand } from "@/lib/commands";
@@ -60,6 +60,12 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
   useEffect(() => {
     if (!ctx) setDismissedKey(null);
   }, [ctx]);
+  // Keep the active row visible while arrowing through a scrolled list; the
+  // list's scroll-padding keeps a gutter so edge rows are never pinned flush.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [index]);
 
   const apply = (cmd?: SlashCommand) => {
     if (!ctx || !cmd) return;
@@ -128,7 +134,7 @@ export function SlashMenu({ editor, editorRef }: SlashMenuProps) {
             <span className="kbd-chip">↵</span>
           </span>
         </div>
-        <div className="max-h-[300px] overflow-y-auto p-1 pt-0.5">
+        <div ref={listRef} className="menu-list p-1.5 pt-0.5">
           {commands.map((c, i) => {
             const groupStart = i === 0 || commands[i - 1].group !== c.group;
             return (
