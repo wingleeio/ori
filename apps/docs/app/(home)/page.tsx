@@ -9,15 +9,15 @@ function EditorMock() {
   const bars = Array.from({ length: 30 }, (_, i) => 30 + ((i * 53) % 60));
   return (
     <div className="reveal d4 relative">
-      {/* offset shadow card for depth */}
-      <div className="absolute -inset-1.5 -z-10 translate-x-3 translate-y-3 rounded-2xl border border-fd-border bg-fd-card/40" />
-      <div className="overflow-hidden rounded-2xl border border-fd-border bg-fd-card shadow-[0_24px_60px_-30px_rgba(0,0,0,0.45)]">
+      {/* single light source behind the window */}
+      <div className="aura absolute -inset-10 -z-10" />
+      <div className="overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_30px_80px_-30px_rgba(0,0,0,0.9)]">
         {/* title bar */}
         <div className="flex items-center gap-3 border-b border-fd-border px-4 py-2.5">
           <div className="flex gap-1.5">
-            <span className="size-2.5 rounded-full bg-fd-primary/70" />
-            <span className="size-2.5 rounded-full bg-fd-muted-foreground/30" />
-            <span className="size-2.5 rounded-full bg-fd-muted-foreground/30" />
+            <span className="size-2.5 rounded-full bg-fd-muted-foreground/40" />
+            <span className="size-2.5 rounded-full bg-fd-muted-foreground/25" />
+            <span className="size-2.5 rounded-full bg-fd-muted-foreground/25" />
           </div>
           <span className="ff-mono text-[11px] text-fd-muted-foreground">untitled.note</span>
           <span className="ff-mono tnum ml-auto text-[11px] text-fd-muted-foreground">
@@ -102,60 +102,61 @@ const PACKAGES = [
 
 export default function HomePage() {
   return (
-    <main className="grain relative isolate flex flex-1 flex-col overflow-hidden">
+    <main className="relative isolate flex flex-1 flex-col overflow-hidden">
       {/* ── hero ─────────────────────────────────────────────────────────── */}
       <section className="relative border-b border-fd-border">
-        <div className="baseline pointer-events-none absolute inset-0 opacity-70" />
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-[420px]"
-          style={{
-            background:
-              "radial-gradient(70% 80% at 78% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 65%)",
-          }}
-        />
-        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
-          {/* copy */}
-          <div>
-            <p className="reveal d1 ff-mono mb-7 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
-              <span className="inline-block h-px w-7 bg-fd-primary" />
-              Local-first · text-layout engine
-            </p>
-            <h1 className="reveal d2 ff-display text-[clamp(2.6rem,6vw,4.6rem)] font-medium leading-[0.98] tracking-tight text-fd-foreground">
-              A virtualized
-              <br />
-              note editor —
-              <br />
-              <span className="font-semibold text-fd-primary">layout derived</span>
-              <span className="text-fd-foreground">, never stored.</span>
-              <span className="mock-caret align-baseline" />
-            </h1>
-            <p className="reveal d3 mt-7 max-w-md text-lg leading-relaxed text-fd-muted-foreground">
-              Ori keeps the whole note in a Y.Doc, measures it with Pretext, and
-              renders only the blocks you can see. Ten thousand lines stay
-              editable while the DOM stays tiny.
-            </p>
-            <div className="reveal d4 mt-9 flex flex-wrap items-center gap-3">
-              <Link
-                href="/docs"
-                className="group inline-flex items-center gap-2 rounded-full bg-fd-primary px-6 py-3 text-sm font-medium text-fd-primary-foreground transition-transform hover:-translate-y-0.5"
-              >
-                Read the docs
-                <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                href="/docs/architecture"
-                className="ulink ff-mono px-2 py-3 text-sm text-fd-foreground"
-              >
-                how it works
-              </Link>
+        <div className="dotgrid pointer-events-none absolute inset-0" />
+        <div className="spotlight pointer-events-none absolute inset-x-0 top-0 h-[560px]" />
+        <div className="relative mx-auto w-full max-w-6xl">
+          {/* grid-intersection crosshairs, drawn at the hero's corners */}
+          <span className="cross left-4 top-6 hidden lg:block" aria-hidden />
+          <span className="cross right-4 top-6 hidden lg:block" aria-hidden />
+          <div className="relative grid grid-cols-1 items-center gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
+            {/* copy */}
+            <div>
+              <p className="reveal d1 ff-mono mb-7 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
+                <span className="inline-block h-px w-7 bg-fd-muted-foreground/60" />
+                Local-first · text-layout engine
+              </p>
+              <h1 className="reveal d2 ff-display text-[clamp(2.6rem,6vw,4.6rem)] leading-[1.02] tracking-tight">
+                <span className="txt-gradient">
+                  A virtualized
+                  <br />
+                  note editor —
+                </span>
+                <br />
+                <span className="text-white">layout derived</span>
+                <span className="txt-gradient">, never stored.</span>
+                <span className="mock-caret align-baseline" />
+              </h1>
+              <p className="reveal d3 mt-7 max-w-md text-lg leading-relaxed text-fd-muted-foreground">
+                Ori keeps the whole note in a Y.Doc, measures it with Pretext, and
+                renders only the blocks you can see. Ten thousand lines stay
+                editable while the DOM stays tiny.
+              </p>
+              <div className="reveal d4 mt-9 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/docs"
+                  className="btn-primary group inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium"
+                >
+                  Read the docs
+                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                <Link
+                  href="/docs/architecture"
+                  className="btn-ghost inline-flex items-center rounded-full px-6 py-3 text-sm"
+                >
+                  How it works
+                </Link>
+              </div>
+              <p className="reveal d5 ff-mono mt-10 text-[11px] uppercase tracking-[0.18em] text-fd-muted-foreground/70">
+                MIT · 0.0.1 alpha · Y.Doc + Pretext + virtualization
+              </p>
             </div>
-            <p className="reveal d5 ff-mono mt-10 text-[11px] uppercase tracking-[0.18em] text-fd-muted-foreground">
-              MIT · 0.0.1 alpha · Y.Doc + Pretext + virtualization
-            </p>
-          </div>
 
-          {/* editor window */}
-          <EditorMock />
+            {/* editor window */}
+            <EditorMock />
+          </div>
         </div>
       </section>
 
@@ -163,14 +164,14 @@ export default function HomePage() {
       <section className="border-b border-fd-border">
         <div className="mx-auto w-full max-w-3xl px-6 py-20">
           <p className="ff-mono mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
-            <span className="inline-block h-px w-7 bg-fd-primary" />
+            <span className="inline-block h-px w-7 bg-fd-muted-foreground/60" />
             live demo
           </p>
           <h2 className="ff-display text-3xl tracking-tight text-fd-foreground sm:text-4xl">
             Try it — it's real.
           </h2>
           <p className="mt-3 max-w-xl text-fd-muted-foreground">
-            A full <code className="ff-mono text-sm text-fd-primary">@wingleeio/ori-react</code>{" "}
+            A full <code className="ff-mono text-sm text-fd-foreground">@wingleeio/ori-react</code>{" "}
             editor, running right here in the page. Type, drag to select for the formatting menu, or
             press <kbd className="ff-mono">/</kbd> for blocks like <span className="text-fd-foreground">Bullet list</span>,{" "}
             <span className="text-fd-foreground">Numbered list</span>, or a <span className="text-fd-foreground">To-do list</span>. Press <kbd className="ff-mono">@</kbd> to mention.
@@ -185,7 +186,7 @@ export default function HomePage() {
       <section className="border-b border-fd-border">
         <div className="mx-auto w-full max-w-6xl px-6 py-20">
           <p className="ff-mono mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
-            <span className="inline-block h-px w-7 bg-fd-primary" />
+            <span className="inline-block h-px w-7 bg-fd-muted-foreground/60" />
             benchmark
           </p>
           <h2 className="ff-display text-3xl tracking-tight text-fd-foreground sm:text-4xl">
@@ -206,14 +207,14 @@ export default function HomePage() {
       <section className="border-b border-fd-border">
         <div className="mx-auto w-full max-w-6xl px-6 py-16">
           <p className="ff-mono mb-10 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fd-muted-foreground">
-            <span className="inline-block h-px w-7 bg-fd-primary" />
+            <span className="inline-block h-px w-7 bg-fd-muted-foreground/60" />
             the data flow
           </p>
           <div className="grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border md:grid-cols-3">
             {PIPELINE.map((s, i) => (
               <div key={s.k} className="bg-fd-background p-7">
                 <div className="flex items-baseline justify-between">
-                  <span className="ff-mono text-sm text-fd-primary">{s.k}</span>
+                  <span className="ff-mono text-sm text-fd-foreground">{s.k}</span>
                   <span className="ff-mono text-[11px] text-fd-muted-foreground">
                     {i < PIPELINE.length - 1 ? "→" : "■"}
                   </span>
@@ -234,7 +235,7 @@ export default function HomePage() {
               key={f.n}
               className="grid grid-cols-1 gap-3 border-b border-fd-border py-10 last:border-0 md:grid-cols-[auto_1fr] md:gap-12"
             >
-              <span className="ff-mono text-sm text-fd-primary">{f.n}</span>
+              <span className="ff-mono text-sm text-fd-muted-foreground">{f.n}</span>
               <div className="max-w-3xl">
                 <h3 className="ff-display text-2xl text-fd-foreground sm:text-3xl">{f.t}</h3>
                 <p className="mt-3 text-[17px] leading-relaxed text-fd-muted-foreground">{f.d}</p>
@@ -253,7 +254,7 @@ export default function HomePage() {
           <div className="mt-8 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border md:grid-cols-3">
             {PACKAGES.map((p) => (
               <div key={p.name} className="bg-fd-card p-7">
-                <code className="ff-mono text-sm font-medium text-fd-primary">{p.name}</code>
+                <code className="ff-mono text-sm font-medium text-fd-foreground">{p.name}</code>
                 <p className="mt-3 text-sm leading-relaxed text-fd-muted-foreground">{p.d}</p>
               </div>
             ))}
@@ -269,7 +270,7 @@ export default function HomePage() {
           </p>
           <Link
             href="/docs/getting-started"
-            className="group inline-flex items-center gap-2 rounded-full border border-fd-foreground/20 bg-fd-foreground px-6 py-3 text-sm font-medium text-fd-background transition-transform hover:-translate-y-0.5"
+            className="btn-primary group inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium"
           >
             Get started
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />

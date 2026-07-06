@@ -5,60 +5,45 @@
 @source "../node_modules/fumadocs-ui/dist/**/*.js";
 
 @theme {
-  --font-display: "Bricolage Grotesque", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* ── Theme: warm paper · ink · botanical green ────────────────────────── */
-:root {
-  --color-fd-background: #f6f3ea;
-  --color-fd-foreground: #1a1c17;
-  --color-fd-muted: #ece8db;
-  --color-fd-muted-foreground: #6c6a5b;
-  --color-fd-border: #e0dac9;
-  --color-fd-primary: #15784d;
-  --color-fd-primary-foreground: #f6f3ea;
-  --color-fd-secondary: #e8e3d4;
-  --color-fd-secondary-foreground: #1a1c17;
-  --color-fd-accent: #e8e3d4;
-  --color-fd-accent-foreground: #1a1c17;
-  --color-fd-card: #fdfbf4;
-  --color-fd-card-foreground: #1a1c17;
-  --color-fd-popover: #fdfbf4;
-  --color-fd-popover-foreground: #1a1c17;
-  --color-fd-ring: #15784d;
-
-  --ink: #1a1c17;
-  --paper: #f6f3ea;
-  --accent: #15784d;
-}
-
+/* ── Theme: obsidian · hairline · one blue ───────────────────────────────
+   True-black canvas, near-black panels, 1px white-alpha hairlines, and a
+   single restrained blue reserved for the editor's own machinery (caret,
+   selection, links, chips). Everything else is a grayscale hierarchy. The
+   site ships ONE theme — black — so :root and .dark are identical. */
+:root,
 .dark {
-  --color-fd-background: #0f1310;
-  --color-fd-foreground: #e7ece0;
-  --color-fd-muted: #19201a;
-  --color-fd-muted-foreground: #8c9a86;
-  --color-fd-border: #232c23;
-  --color-fd-primary: #46cf8d;
-  --color-fd-primary-foreground: #0f1310;
-  --color-fd-secondary: #1b231c;
-  --color-fd-secondary-foreground: #e7ece0;
-  --color-fd-accent: #1e271e;
-  --color-fd-accent-foreground: #e7ece0;
-  --color-fd-card: #141a14;
-  --color-fd-card-foreground: #e7ece0;
-  --color-fd-popover: #141a14;
-  --color-fd-popover-foreground: #e7ece0;
-  --color-fd-ring: #46cf8d;
+  --color-fd-background: #000000;
+  --color-fd-foreground: #ededed;
+  --color-fd-muted: #111111;
+  --color-fd-muted-foreground: #a1a1a1;
+  --color-fd-border: rgba(255, 255, 255, 0.1);
+  --color-fd-primary: #3291ff;
+  --color-fd-primary-foreground: #000000;
+  --color-fd-secondary: #111111;
+  --color-fd-secondary-foreground: #ededed;
+  --color-fd-accent: #171717;
+  --color-fd-accent-foreground: #ededed;
+  --color-fd-card: #0a0a0a;
+  --color-fd-card-foreground: #ededed;
+  --color-fd-popover: #0a0a0a;
+  --color-fd-popover-foreground: #ededed;
+  --color-fd-ring: #3291ff;
 
-  --ink: #e7ece0;
-  --paper: #0f1310;
-  --accent: #46cf8d;
+  --ink: #ededed;
+  --paper: #000000;
+  --accent: #3291ff;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.22);
 }
 
 body {
   font-family: var(--font-body);
+  background: var(--color-fd-background);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -71,9 +56,8 @@ body {
 /* ── Type helpers ─────────────────────────────────────────────────────── */
 .ff-display {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  font-weight: 400;
-  letter-spacing: -0.018em;
+  font-weight: 500;
+  letter-spacing: -0.032em;
 }
 .ff-mono {
   font-family: var(--font-mono);
@@ -82,42 +66,106 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Vercel-style headline: white fading into gray, clipped to the glyphs. */
+.txt-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #8f8f8f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* ── Atmosphere ───────────────────────────────────────────────────────── */
-/* faint manuscript baseline rules */
-.baseline {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 31px,
-    color-mix(in oklab, var(--ink) 7%, transparent) 31px,
-    color-mix(in oklab, var(--ink) 7%, transparent) 32px
+/* A faint engineering dot-grid that dissolves toward the fold. */
+.dotgrid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+/* Top-center spotlight — the only "light source" on the page. */
+.spotlight {
+  background: radial-gradient(
+    58% 46% at 50% 0%,
+    rgba(255, 255, 255, 0.09),
+    rgba(255, 255, 255, 0.02) 55%,
+    transparent 78%
   );
 }
-/* paper grain */
-.grain::before {
+/* Soft aura behind the editor window. */
+.aura {
+  background: radial-gradient(
+    52% 52% at 50% 42%,
+    color-mix(in oklab, var(--accent) 16%, transparent),
+    transparent 72%
+  );
+  filter: blur(14px);
+}
+/* Grid-intersection crosshair, the Vercel section marker. */
+.cross {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  color: var(--hairline-strong);
+  pointer-events: none;
+}
+.cross::before,
+.cross::after {
   content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  background: currentColor;
 }
-.dark .grain::before {
-  mix-blend-mode: screen;
-  opacity: 0.28;
+.cross::before {
+  left: 8px;
+  top: 0;
+  width: 1px;
+  height: 17px;
+}
+.cross::after {
+  left: 0;
+  top: 8px;
+  width: 17px;
+  height: 1px;
+}
+
+/* Panel: near-black card whose hairline wakes up under the cursor. */
+.panel {
+  background: var(--color-fd-card);
+  border: 1px solid var(--hairline);
+  transition: border-color 0.25s ease, background-color 0.25s ease;
+}
+.panel:hover {
+  border-color: var(--hairline-strong);
 }
 
 /* hairline that draws on hover */
 .ulink {
-  background-image: linear-gradient(var(--accent), var(--accent));
-  background-size: 0% 1.5px;
+  background-image: linear-gradient(var(--ink), var(--ink));
+  background-size: 0% 1px;
   background-position: 0 100%;
   background-repeat: no-repeat;
   transition: background-size 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .ulink:hover {
-  background-size: 100% 1.5px;
+  background-size: 100% 1px;
+}
+
+/* Primary CTA: the white pill. Calm hover — luminance, not motion. */
+.btn-primary {
+  background: #ffffff;
+  color: #000000;
+  transition: background-color 0.2s ease;
+}
+.btn-primary:hover {
+  background: #d9d9d9;
+}
+.btn-ghost {
+  border: 1px solid var(--hairline);
+  color: var(--color-fd-foreground);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.btn-ghost:hover {
+  border-color: var(--hairline-strong);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ── Editor mock bits ─────────────────────────────────────────────────── */
@@ -132,22 +180,22 @@ body {
 }
 .mock-sel {
   border-radius: 2px;
-  background: color-mix(in oklab, var(--accent) 22%, transparent);
+  background: color-mix(in oklab, var(--accent) 26%, transparent);
   padding: 0.05em 0;
 }
 .mock-pill {
   border-radius: 5px;
   padding: 0.02em 0.34em;
-  background: color-mix(in oklab, var(--ink) 9%, transparent);
+  background: rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
   font-size: 0.86em;
 }
 .mock-chip {
   border-radius: 6px;
   padding: 0.06em 0.4em;
-  background: color-mix(in oklab, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font-weight: 600;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: color-mix(in oklab, var(--accent) 70%, #ffffff);
+  font-weight: 500;
   font-size: 0.92em;
 }
 
@@ -159,13 +207,14 @@ body {
 /* ── Live editor (the real @wingleeio/ori-react embed) ────────────────── */
 .live-editor {
   --ori-caret: var(--accent);
-  --ori-selection: color-mix(in oklab, var(--accent) 20%, transparent);
-  --ori-placeholder: color-mix(in oklab, var(--color-fd-muted-foreground) 80%, transparent);
-  --ori-code-bg: color-mix(in oklab, var(--ink) 9%, transparent);
-  --ori-codeblock-bg: color-mix(in oklab, var(--ink) 6%, transparent);
-  --ori-quote-border: color-mix(in oklab, var(--accent) 55%, transparent);
+  --ori-selection: color-mix(in oklab, var(--accent) 26%, transparent);
+  --ori-placeholder: rgba(255, 255, 255, 0.28);
+  --ori-code-bg: rgba(255, 255, 255, 0.08);
+  --ori-codeblock-bg: rgba(255, 255, 255, 0.05);
+  --ori-quote-border: rgba(255, 255, 255, 0.24);
   --ori-quote-text: var(--color-fd-muted-foreground);
   --ori-link: var(--accent);
+  --ori-drop-indicator: var(--accent);
   color: var(--color-fd-foreground);
 }
 .live-editor .ori-scroller {

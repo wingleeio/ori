@@ -11,6 +11,8 @@ const navTitle = (
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: { title: navTitle },
+    // The site ships one theme — black — so a light/dark toggle is noise.
+    themeSwitch: { enabled: false },
   };
 }
 
@@ -19,5 +21,6 @@ export function homeOptions(): BaseLayoutProps {
   return {
     nav: { title: navTitle },
     links: [{ text: "Docs", url: "/docs", active: "nested-url" }],
+    themeSwitch: { enabled: false },
   };
 }
