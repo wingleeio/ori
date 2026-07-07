@@ -116,6 +116,16 @@ function useCaretMenu(editorRef: Ref, open: boolean, width: number, maxHeight = 
       const c = editorRef.current?.getCaretRect();
       if (el && c) {
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        // The DOM caret can leave the editor (a click elsewhere on the page
+        // moves the selection) while the menu's model context still exists —
+        // never chase it outside the editor; hide until it returns/closes.
+        if (
+          sc &&
+          (c.y + c.height < sc.top + 2 || c.y > sc.bottom - 2 || c.x < sc.left - 2 || c.x > sc.right + 2)
+        ) {
+          el.style.visibility = "hidden";
+          return;
+        }
         const vpTop = sc ? sc.top : 0;
         const vpBottom = sc ? sc.bottom : window.innerHeight;
         // The menu must fit within BOTH the editor viewport and the window:
@@ -160,6 +170,16 @@ function useSelectionToolbar(editorRef: Ref, open: boolean) {
       const r = editorRef.current?.getSelectionRect();
       if (el && r) {
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        // A DOM selection outside the editor (the user selecting page copy
+        // while the model still holds a range) must never drag the toolbar
+        // with it — hide instead of teleporting.
+        if (
+          sc &&
+          (r.bottom < sc.top + 2 || r.top > sc.bottom - 2 || r.right < sc.left - 2 || r.left > sc.right + 2)
+        ) {
+          el.style.visibility = "hidden";
+          return;
+        }
         const above = r.top - (sc ? sc.top : 0) >= 52;
         const w = el.offsetWidth || 0;
         const cx = r.left + r.width / 2;
@@ -232,6 +252,19 @@ export function SlashMenu({ editor, editorRef }: { editor: EditorController; edi
   }, [open, commands, index, key]);
 
   const menuRef = useCaretMenu(editorRef, open, 276);
+  // A click anywhere outside the menu closes it — without this, the menu's
+  // model context survives the click (the editor keeps its selection on blur)
+  // and the panel would chase the relocated DOM caret across the page.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setDismissed(key);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, key]);
   if (!open) return null;
   return createPortal(
     <div ref={menuRef} data-ori-overlay className="fixed z-40 w-[276px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>
@@ -322,6 +355,19 @@ export function MentionMenu({ editor, editorRef }: { editor: EditorController; e
   }, [open, people, index, key]);
 
   const menuRef = useCaretMenu(editorRef, open, 264);
+  // A click anywhere outside the menu closes it — without this, the menu's
+  // model context survives the click (the editor keeps its selection on blur)
+  // and the panel would chase the relocated DOM caret across the page.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setDismissed(key);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, key]);
   if (!open) return null;
   return createPortal(
     <div ref={menuRef} data-ori-overlay className="fixed z-40 w-[264px]" style={{ top: 0, left: 0, visibility: "hidden" }} onMouseDown={keepFocus}>

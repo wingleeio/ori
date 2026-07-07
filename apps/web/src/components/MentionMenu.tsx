@@ -100,6 +100,20 @@ export function MentionMenu({ editor, editorRef }: MentionMenuProps) {
   }, [open, people, index, key]);
 
   const menuRef = useCaretMenu(editorRef, open, MENU_WIDTH, MAX_HEIGHT);
+  // A click anywhere outside the menu closes it — without this, the menu's
+  // model context survives the click (the editor keeps its selection on blur)
+  // and the panel would chase the relocated DOM caret across the page.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setDismissedKey(key);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, key]);
+
   if (!open) return null;
 
   return createPortal(

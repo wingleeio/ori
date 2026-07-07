@@ -25,6 +25,16 @@ export function useCaretMenu(
       const c = editorRef.current?.getCaretRect();
       if (el && c) {
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        // The DOM caret can leave the editor (a click elsewhere on the page
+        // moves the selection) while the menu's model context still exists —
+        // never chase it outside the editor; hide until it returns/closes.
+        if (
+          sc &&
+          (c.y + c.height < sc.top + 2 || c.y > sc.bottom - 2 || c.x < sc.left - 2 || c.x > sc.right + 2)
+        ) {
+          el.style.visibility = "hidden";
+          return;
+        }
         const vpTop = sc ? sc.top : 0;
         const vpBottom = sc ? sc.bottom : window.innerHeight;
         // The menu must fit within BOTH the editor viewport and the window:
@@ -74,6 +84,16 @@ export function useSelectionToolbar(
       const r = editorRef.current?.getSelectionRect();
       if (el && r) {
         const sc = editorRef.current?.getScrollElement()?.getBoundingClientRect();
+        // A DOM selection outside the editor (the user selecting page copy
+        // while the model still holds a range) must never drag the toolbar
+        // with it — hide instead of teleporting.
+        if (
+          sc &&
+          (r.bottom < sc.top + 2 || r.top > sc.bottom - 2 || r.right < sc.left - 2 || r.left > sc.right + 2)
+        ) {
+          el.style.visibility = "hidden";
+          return;
+        }
         const above = r.top - (sc ? sc.top : 0) >= 44;
         const w = el.offsetWidth || 0;
         const cx = r.left + r.width / 2;
