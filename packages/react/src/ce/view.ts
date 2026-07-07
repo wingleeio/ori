@@ -193,6 +193,16 @@ export class EditorView {
       root.addEventListener(t, h as EventListener, o);
       this.detachers.push(() => root.removeEventListener(t, h as EventListener, o));
     };
+    // Clicking into an UNFOCUSED editor: the browser's default mousedown
+    // focus scrolls the contenteditable to reveal its remembered selection
+    // (wherever the caret last was) BEFORE the click places the new caret —
+    // a jump to a seemingly random spot. Pre-focusing with preventScroll
+    // makes the default focus a no-op, so the click just sets the caret.
+    on("pointerdown", () => {
+      if (document.activeElement !== root && !this.opts.readOnly) {
+        root.focus({ preventScroll: true });
+      }
+    });
     on("beforeinput", (e) => this.onBeforeInput(e as InputEvent));
     on("input", (e) => this.onInput(e));
     on("keydown", (e) => this.onKeyDown(e as KeyboardEvent));
@@ -398,7 +408,11 @@ export class EditorView {
   }
 
   focus() {
-    this.root.focus();
+    // Never let focus scroll the editor: Chrome reveals the contenteditable's
+    // remembered selection on focus, yanking the scroller to wherever the
+    // caret last was (often far from what the user is looking at). The view
+    // draws its own caret and manages its own scrolling.
+    this.root.focus({ preventScroll: true });
   }
 
   // --- rendering ---------------------------------------------------------

@@ -361,7 +361,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   useImperativeHandle(
     ref,
     (): NoteEditorHandle => ({
-      focus: () => (viewRef.current ? viewRef.current.focus() : contentRef.current?.focus()),
+      focus: () => (viewRef.current ? viewRef.current.focus() : contentRef.current?.focus({ preventScroll: true })),
       getCaretRect: () => {
         const r = caretClientRect();
         return r ? { x: r.left, y: r.top, height: r.height || 16 } : null;
@@ -460,7 +460,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
   }, [editor]);
 
   useEffect(() => {
-    if (autoFocus) contentRef.current?.focus();
+    if (autoFocus) contentRef.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 
   // Position the custom caret from the live DOM selection.
@@ -559,7 +559,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
     const blocks = content ? ([...content.querySelectorAll("[data-block-id]")] as HTMLElement[]) : [];
     if (!content || !blocks.length) return;
     e.preventDefault();
-    content.focus();
+    // preventScroll: focusing must never reveal-scroll to the remembered
+    // selection — the caret is being placed at the click right below.
+    content.focus({ preventScroll: true });
     // Pick the block containing the click's Y, else the block vertically nearest
     // to it, then the line nearest the click within it, then place the caret at
     // that line's start or end depending on which side was clicked — like a real
