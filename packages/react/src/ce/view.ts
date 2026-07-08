@@ -198,7 +198,10 @@ export class EditorView {
     // (wherever the caret last was) BEFORE the click places the new caret —
     // a jump to a seemingly random spot. Pre-focusing with preventScroll
     // makes the default focus a no-op, so the click just sets the caret.
-    on("pointerdown", () => {
+    on("pointerdown", (e) => {
+      // Widget-internal controls (table cell inputs) take focus themselves —
+      // pre-focusing the root would steal it for a frame and churn focus.
+      if (this.inCustomWidget(e.target)) return;
       if (document.activeElement !== root && !this.opts.readOnly) {
         root.focus({ preventScroll: true });
       }

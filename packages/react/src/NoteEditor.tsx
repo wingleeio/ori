@@ -479,6 +479,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
         !caret ||
         readOnlyRef.current ||
         !focusedRef.current ||
+        // The custom caret belongs to the TEXT surface: while a custom
+        // block's own control has focus (a table cell input — focus events
+        // bubble, so focusedRef stays true), the widget shows the native
+        // caret and ours must hide instead of drawing at a stale position.
+        document.activeElement !== content ||
         !s ||
         s.rangeCount === 0 ||
         !s.isCollapsed ||
