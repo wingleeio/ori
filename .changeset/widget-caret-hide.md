@@ -9,4 +9,6 @@ Typing in a table cell input showed ori's custom caret at a stale position
 bubble, so the editor still considered itself focused. The caret overlay now
 renders only while the contenteditable surface itself is the active element,
 and the pointerdown pre-focus skips widget-internal controls so they take
-focus directly.
+focus directly. Widget inputs also undo the surface's transparent
+`caret-color` (via `--ori-caret`), so cells show a real native caret instead
+of none at all.

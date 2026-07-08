@@ -63,6 +63,16 @@
      rendered line-height would drift the virtualized scroll. */
   line-height: 1.7;
 }
+/* Widget-internal form controls (a table's cell inputs) are edited with the
+   BROWSER's caret — the custom overlay hides while they're focused, so the
+   transparent caret-color inherited from .ori-ce must be undone here or the
+   cell shows no cursor at all. */
+.ori-ce input,
+.ori-ce textarea,
+.ori-ce [data-ori-widget] {
+  caret-color: var(--ori-caret, auto);
+}
+
 .ori-ce .ori-block {
   white-space: pre-wrap;
   /* Keep an empty block selectable at exactly ONE line. This must never
