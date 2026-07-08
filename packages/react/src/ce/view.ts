@@ -237,6 +237,10 @@ export class EditorView {
       }, 0);
     });
     on("compositionstart", () => {
+      // IME inside a widget's own editable control stays fully native — the
+      // reconcile-on-end logic below would diff the WIDGET's text against the
+      // block's hidden Y.Text and corrupt the model.
+      if (this.inCustomWidget(document.activeElement)) return;
       // Composing after Cmd+A replaces the whole document: delete it first so the
       // IME composes into a single empty block (the DOM range only covers the
       // window, so the browser alone would leave off-screen blocks behind).
@@ -253,6 +257,7 @@ export class EditorView {
       this.composeBaseText = this.composeBlockId ? this.editor.getBlockText(this.composeBlockId) : null;
     });
     on("compositionend", () => {
+      if (this.inCustomWidget(document.activeElement)) return;
       this.composing = false;
       const id = this.composeBlockId;
       // Did a concurrent edit (remote / app command) touch the block we were
@@ -335,6 +340,12 @@ export class EditorView {
 
     const onSelChange = () => {
       if (this.applyingModel || this.composing) return;
+      // A selection inside a widget's own editable control (a contenteditable
+      // table cell) belongs to the widget — mapping it through the block
+      // offsets would corrupt the model caret on every cell keystroke.
+      const anchor = window.getSelection()?.anchorNode ?? null;
+      const anchorEl = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+      if (this.inCustomWidget(anchorEl)) return;
       const sel = this.readSelection();
       if (!sel) return;
       // After Cmd+A the model holds the whole-document selection; the DOM can

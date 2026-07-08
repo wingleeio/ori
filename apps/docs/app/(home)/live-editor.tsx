@@ -255,19 +255,32 @@ function TableBlock({ editor, block }: { editor: EditorController; block: { id: 
                       borderLeft: c === 0 ? "none" : `1px solid ${line}`,
                     }}
                   >
-                    <input
-                      defaultValue={cell}
+                    {/* contenteditable (not <input>) so the cell's selection is
+                        the DOCUMENT selection — the editor's own branded caret
+                        overlay draws in here, identical to the text surface. */}
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      tabIndex={0}
+                      role="textbox"
                       aria-label={`Table cell row ${r + 1} column ${c + 1}`}
+                      dangerouslySetInnerHTML={{
+                        __html: cell.replace(/&/g, "&amp;").replace(/</g, "&lt;"),
+                      }}
                       onBlur={(e) => {
-                        if (rows[r]?.[c] === e.target.value) return;
+                        const value = e.currentTarget.textContent ?? "";
+                        if (rows[r]?.[c] === value) return;
                         const next = rows.map((x) => [...x]);
-                        next[r][c] = e.target.value;
+                        next[r][c] = value;
                         write(next);
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          (e.currentTarget as HTMLElement).blur();
+                        }
                       }}
-                      className={`h-full w-full bg-transparent px-3 outline-none transition-colors focus:bg-white/[0.05] ${
+                      className={`flex h-full w-full items-center overflow-hidden whitespace-nowrap px-3 outline-none transition-colors focus:bg-white/[0.05] ${
                         r === 0
                           ? "text-[12px] font-medium uppercase tracking-wide text-fd-muted-foreground"
                           : "text-fd-foreground/90"

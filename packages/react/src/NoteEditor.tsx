@@ -474,16 +474,21 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function
       const content = contentRef.current;
       const caret = caretRef.current;
       const s = window.getSelection();
+      // The custom caret draws wherever the DOCUMENT selection lives: the
+      // text surface itself, or a widget's own contenteditable (a table
+      // cell), whose selection is also readable here. Form controls (inputs)
+      // keep their private selection, so the overlay hides for them — they
+      // show the native caret instead of ours drawing at a stale position.
+      const active = document.activeElement;
+      const activeEditable =
+        active === content ||
+        (active instanceof HTMLElement && content?.contains(active) === true && active.isContentEditable);
       if (
         !content ||
         !caret ||
         readOnlyRef.current ||
         !focusedRef.current ||
-        // The custom caret belongs to the TEXT surface: while a custom
-        // block's own control has focus (a table cell input — focus events
-        // bubble, so focusedRef stays true), the widget shows the native
-        // caret and ours must hide instead of drawing at a stale position.
-        document.activeElement !== content ||
+        !activeEditable ||
         !s ||
         s.rangeCount === 0 ||
         !s.isCollapsed ||

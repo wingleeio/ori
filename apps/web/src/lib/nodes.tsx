@@ -186,15 +186,27 @@ function TableBlock({ editor, block }: { editor: import("@wingleeio/ori-core").E
                     )}
                     style={{ height: 36, boxSizing: "border-box" }}
                   >
-                    <input
-                      defaultValue={cell}
+                    {/* contenteditable (not <input>) so the cell's selection is
+                        the DOCUMENT selection — the editor's own branded caret
+                        overlay draws in here, identical to the text surface. */}
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      tabIndex={0}
+                      role="textbox"
                       aria-label={`Table cell row ${r + 1} column ${c + 1}`}
-                      onBlur={(e) => setCell(r, c, e.target.value)}
+                      dangerouslySetInnerHTML={{
+                        __html: cell.replace(/&/g, "&amp;").replace(/</g, "&lt;"),
+                      }}
+                      onBlur={(e) => setCell(r, c, e.currentTarget.textContent ?? "")}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          (e.currentTarget as HTMLElement).blur();
+                        }
                       }}
                       className={cn(
-                        "h-full w-full bg-transparent px-3 outline-none transition-colors focus:bg-primary/5",
+                        "flex h-full w-full items-center overflow-hidden whitespace-nowrap px-3 outline-none transition-colors focus:bg-primary/5",
                         r === 0
                           ? "text-xs font-medium uppercase tracking-wide text-muted-foreground"
                           : "text-foreground/90",
