@@ -1,5 +1,17 @@
 # bench
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [75c26ba]
+- Updated dependencies [4a5074d]
+- Updated dependencies [241bb2d]
+- Updated dependencies [241bb2d]
+- Updated dependencies [5329a5d]
+  - @wingleeio/ori-react@0.6.0
+  - @wingleeio/ori-core@0.6.0
+
 ## 0.0.5
 
 ### Patch Changes

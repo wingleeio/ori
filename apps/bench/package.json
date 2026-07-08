@@ -1,7 +1,7 @@
 {
   "name": "bench",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "description": "Editor load benchmark (ori vs TipTap/Lexical/Quill/Slate). Not published.",
   "scripts": {
